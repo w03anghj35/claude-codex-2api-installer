@@ -525,12 +525,36 @@ $testButton.Add_Click({
             Save-CodexConfig -ApiKey $apiKey -BaseUrl $baseUrl -Model $opusCombo.Text.Trim()
             Add-Status "正在通过 Codex CLI 测试连接..."
 
+            $codexCmd = $null
+            $candidates = Get-Command codex -All -ErrorAction SilentlyContinue
+            foreach ($c in $candidates) {
+                if ($c.Source -match '\.(cmd|bat|exe)$') { $codexCmd = $c.Source; break }
+            }
+            if (-not $codexCmd -and $candidates) {
+                $candidate = $candidates | Select-Object -First 1
+                $maybeCmd = "$($candidate.Source).cmd"
+                if (Test-Path $maybeCmd) { $codexCmd = $maybeCmd }
+                else { $codexCmd = $candidate.Source }
+            }
+            if (-not $codexCmd) {
+                Add-Status "测试失败：未能解析 codex 可执行文件路径。"
+                return
+            }
             $psi = New-Object System.Diagnostics.ProcessStartInfo
-            $psi.FileName = "codex"
-            if ([string]::IsNullOrWhiteSpace($opusCombo.Text)) {
-                $psi.Arguments = 'exec "请只回复：连接成功"'
+            if ($codexCmd -match '\.(cmd|bat)$') {
+                $psi.FileName = "$env:ComSpec"
+                if ([string]::IsNullOrWhiteSpace($opusCombo.Text)) {
+                    $psi.Arguments = "/c `"`"$codexCmd`" exec `"请只回复：连接成功`"`""
+                } else {
+                    $psi.Arguments = "/c `"`"$codexCmd`" exec `"请只回复：连接成功`" --model `"$($opusCombo.Text.Trim())`"`""
+                }
             } else {
-                $psi.Arguments = "exec `"请只回复：连接成功`" --model `"$($opusCombo.Text.Trim())`""
+                $psi.FileName = $codexCmd
+                if ([string]::IsNullOrWhiteSpace($opusCombo.Text)) {
+                    $psi.Arguments = 'exec "请只回复：连接成功"'
+                } else {
+                    $psi.Arguments = "exec `"请只回复：连接成功`" --model `"$($opusCombo.Text.Trim())`""
+                }
             }
             $psi.UseShellExecute = $false
             $psi.RedirectStandardOutput = $true
@@ -574,12 +598,36 @@ $testButton.Add_Click({
 
         Add-Status "正在通过 Claude Code 测试连接..."
 
+        $claudeCmd = $null
+        $claudeCandidates = Get-Command claude -All -ErrorAction SilentlyContinue
+        foreach ($c in $claudeCandidates) {
+            if ($c.Source -match '\.(cmd|bat|exe)$') { $claudeCmd = $c.Source; break }
+        }
+        if (-not $claudeCmd -and $claudeCandidates) {
+            $candidate = $claudeCandidates | Select-Object -First 1
+            $maybeCmd = "$($candidate.Source).cmd"
+            if (Test-Path $maybeCmd) { $claudeCmd = $maybeCmd }
+            else { $claudeCmd = $candidate.Source }
+        }
+        if (-not $claudeCmd) {
+            Add-Status "测试失败：未能解析 claude 可执行文件路径。"
+            return
+        }
         $psi = New-Object System.Diagnostics.ProcessStartInfo
-        $psi.FileName = "claude"
-        if ([string]::IsNullOrWhiteSpace($testModel)) {
-            $psi.Arguments = '-p "请只回复：连接成功" --output-format text'
+        if ($claudeCmd -match '\.(cmd|bat)$') {
+            $psi.FileName = "$env:ComSpec"
+            if ([string]::IsNullOrWhiteSpace($testModel)) {
+                $psi.Arguments = "/c `"`"$claudeCmd`" -p `"请只回复：连接成功`" --output-format text`""
+            } else {
+                $psi.Arguments = "/c `"`"$claudeCmd`" -p `"请只回复：连接成功`" --output-format text --model `"$testModel`"`""
+            }
         } else {
-            $psi.Arguments = "-p `"请只回复：连接成功`" --output-format text --model `"$testModel`""
+            $psi.FileName = $claudeCmd
+            if ([string]::IsNullOrWhiteSpace($testModel)) {
+                $psi.Arguments = '-p "请只回复：连接成功" --output-format text'
+            } else {
+                $psi.Arguments = "-p `"请只回复：连接成功`" --output-format text --model `"$testModel`""
+            }
         }
         $psi.UseShellExecute = $false
         $psi.RedirectStandardOutput = $true
