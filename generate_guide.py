@@ -43,14 +43,14 @@ SECTIONS = [
             "点击绿色的 Code 按钮",
             "点击 Download ZIP",
             "下载完成后右键解压，不要只单独下载某一个文件",
-            "解压后进入文件夹，双击「启动界面.bat」",
+            "解压后进入文件夹，双击「start.bat」",
         ],
     },
     {
         "heading": "四、小白使用步骤",
         "numbered": [
             "下载并解压本项目，确保所有文件在同一个文件夹中",
-            "双击「启动界面.bat」",
+            "双击「start.bat」",
             "先选择「Claude Code」或「Codex 桌面端」",
             "点击「开始安装」",
             "点击「打开令牌页面」并复制 2api 令牌",
@@ -95,7 +95,7 @@ SECTIONS = [
     {
         "heading": "八、常见问题",
         "qa": [
-            ("双击没有反应？", "右键「启动界面.bat」，选择以管理员身份运行。"),
+            ("双击没有反应？", "右键「start.bat」，选择以管理员身份运行。"),
             ("模型不可用？", "把模型框留空，使用服务默认模型，或填写 2api 市场里已经订阅的模型名。"),
             ("余额不足？", "说明接口已经连通，但账号余额不足，请检查 2api 余额或套餐。"),
             ("Claude 提示 Auth conflict？", "不要同时设置 ANTHROPIC_AUTH_TOKEN 和 ANTHROPIC_API_KEY。新版工具只写 ANTHROPIC_API_KEY。"),
@@ -106,7 +106,7 @@ SECTIONS = [
         "table": {
             "headers": ["文件", "用途"],
             "rows": [
-                ["启动界面.bat", "图形界面入口，普通用户双击这个文件"],
+                ["start.bat", "图形界面入口，普通用户双击这个文件"],
                 ["ClaudeCodeGUI.ps1", "Claude Code / Codex 图形界面主脚本"],
                 ["一键安装.bat", "旧版 Claude Code 命令行安装入口"],
                 ["配置API.bat", "旧版 Claude Code 命令行配置入口"],
@@ -377,3 +377,4 @@ if __name__ == "__main__":
         print(f"[WARN] PDF 文档被占用，已跳过: {pdf_path}")
 
     print("\n全部生成完毕！")
+
