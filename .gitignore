@@ -1,0 +1,28 @@
+# Local user config and secrets
+.claude/
+.codex/
+settings.json
+auth.json
+*.env
+.env*
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+*.old
+
+# Windows / editor files
+Thumbs.db
+Desktop.ini
+.DS_Store
+.vscode/
+.idea/
+
+# Build output
+Output/
+*.exe
