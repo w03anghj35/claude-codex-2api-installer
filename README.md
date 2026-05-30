@@ -12,13 +12,13 @@
 **macOS / Linux** — 打开终端，粘贴这一行命令，回车：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/你的用户名/claude-code-cn-installer/main/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/w03anghj35/claude-codex-2api-installer/main/setup.sh | bash
 ```
 
 **Windows** — 以管理员身份打开 PowerShell，粘贴这一行命令，回车：
 
 ```powershell
-irm https://raw.githubusercontent.com/你的用户名/claude-code-cn-installer/main/setup.ps1 | iex
+irm https://raw.githubusercontent.com/w03anghj35/claude-codex-2api-installer/main/setup.ps1 | iex
 ```
 
 就这么简单。脚本会自动安装 Node.js、Git、Claude Code，并引导你配置 API 令牌。
@@ -57,7 +57,7 @@ irm https://raw.githubusercontent.com/你的用户名/claude-code-cn-installer/m
 推荐方式 — 一行命令搞定：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/你的用户名/claude-code-cn-installer/main/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/w03anghj35/claude-codex-2api-installer/main/setup.sh | bash
 ```
 
 按照提示选择模型、粘贴令牌就完成了。

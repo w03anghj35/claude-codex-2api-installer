@@ -4,10 +4,10 @@
 # 面向中国用户 - 支持国产大模型 API
 #
 # 使用方式 (复制粘贴到终端即可):
-#   curl -fsSL https://raw.githubusercontent.com/你的用户名/claude-code-cn-installer/main/setup.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/w03anghj35/claude-codex-2api-installer/main/setup.sh | bash
 #
 # 或者先下载再运行:
-#   curl -O https://raw.githubusercontent.com/你的用户名/claude-code-cn-installer/main/setup.sh
+#   curl -O https://raw.githubusercontent.com/w03anghj35/claude-codex-2api-installer/main/setup.sh
 #   bash setup.sh
 # ============================================================================
 
