@@ -69,17 +69,29 @@ function Download-File {
 Clear-Host
 Write-Host ""
 Write-Host "  +--------------------------------------------------------+" -ForegroundColor Magenta
-Write-Host "  |      Claude Code 一键安装 (Windows 中国版)             |" -ForegroundColor Magenta
+Write-Host "  |   Claude Code / Codex 一键安装 (Windows 中国版)        |" -ForegroundColor Magenta
 Write-Host "  +--------------------------------------------------------+" -ForegroundColor Magenta
 Write-Host ""
 Write-Host "  本脚本将自动完成:"
 Write-Host "    1. 安装 Node.js (国内镜像)"
 Write-Host "    2. 安装 Git (国内镜像)"
 Write-Host "    3. 配置 npm 国内镜像源"
-Write-Host "    4. 安装 Claude Code"
+Write-Host "    4. 安装 Claude Code / Codex"
 Write-Host "    5. 配置 API 令牌"
 Write-Host ""
+Write-Host "  请选择要安装的工具:" -ForegroundColor White
+Write-Host "    [1] Claude Code (推荐)"
+Write-Host "    [2] Codex"
+Write-Host "    [3] 两个都装"
+Write-Host ""
 
+$toolChoice = Read-Host "  请选择 [1-3] (默认 1)"
+if ([string]::IsNullOrWhiteSpace($toolChoice)) { $toolChoice = "1" }
+
+$installClaude = ($toolChoice -eq "1" -or $toolChoice -eq "3")
+$installCodex  = ($toolChoice -eq "2" -or $toolChoice -eq "3")
+
+Write-Host ""
 $confirm = Read-Host "  按 Enter 开始安装，输入 Q 退出"
 if ($confirm -eq 'Q' -or $confirm -eq 'q') {
     Write-Host "  已取消。" -ForegroundColor Yellow
@@ -147,20 +159,36 @@ if (Test-Cmd "npm") {
 }
 
 # ---------------------------------------------------------------------------
-# 步骤 4: Claude Code
+# 步骤 4: 安装工具
 # ---------------------------------------------------------------------------
-Step "步骤 4/5: 安装 Claude Code"
+Step "步骤 4/5: 安装工具"
 
-if (Test-Cmd "claude") {
-    Info "Claude Code $(& claude --version 2>$null) 已安装"
-} elseif (Test-Cmd "npm") {
-    Info "正在安装 Claude Code (使用国内镜像，请稍候)..."
-    & npm install -g @anthropic-ai/claude-code 2>&1 | Select-Object -Last 5 | ForEach-Object { Write-Host "  $_" -ForegroundColor Gray }
-    Refresh-Path
-    if (Test-Cmd "claude") { Info "Claude Code 安装成功" }
-    else { Warn "安装完成，但需要重启终端才能使用 claude 命令" }
-} else {
-    Err "npm 不可用，无法安装 Claude Code"
+if ($installClaude) {
+    if (Test-Cmd "claude") {
+        Info "Claude Code $(& claude --version 2>$null) 已安装"
+    } elseif (Test-Cmd "npm") {
+        Info "正在安装 Claude Code (使用国内镜像，请稍候)..."
+        & npm install -g @anthropic-ai/claude-code 2>&1 | Select-Object -Last 5 | ForEach-Object { Write-Host "  $_" -ForegroundColor Gray }
+        Refresh-Path
+        if (Test-Cmd "claude") { Info "Claude Code 安装成功" }
+        else { Warn "安装完成，但需要重启终端才能使用 claude 命令" }
+    } else {
+        Err "npm 不可用，无法安装 Claude Code"
+    }
+}
+
+if ($installCodex) {
+    if (Test-Cmd "codex") {
+        Info "Codex $(& codex --version 2>$null) 已安装"
+    } elseif (Test-Cmd "npm") {
+        Info "正在安装 Codex (使用国内镜像，请稍候)..."
+        & npm install -g @openai/codex 2>&1 | Select-Object -Last 5 | ForEach-Object { Write-Host "  $_" -ForegroundColor Gray }
+        Refresh-Path
+        if (Test-Cmd "codex") { Info "Codex 安装成功" }
+        else { Warn "安装完成，但需要重启终端才能使用 codex 命令" }
+    } else {
+        Err "npm 不可用，无法安装 Codex"
+    }
 }
 
 # ---------------------------------------------------------------------------
@@ -169,7 +197,7 @@ if (Test-Cmd "claude") {
 Step "步骤 5/5: 配置 API 令牌"
 
 Write-Host ""
-Write-Host "  Claude Code 需要一个 API 令牌才能运行。"
+Write-Host "  需要一个 API 令牌才能运行。"
 Write-Host "  获取令牌: $TOKEN_URL" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  可用模型 (留空使用服务默认模型):"
@@ -204,35 +232,58 @@ if ($modelChoice -ge "1" -and $modelChoice -le "6") {
         $idx = [int]$modelChoice - 1
         $selectedModel = $glmModels[$idx]
 
-        if (-not (Test-Path $SETTINGS_DIR)) {
-            New-Item -ItemType Directory -Path $SETTINGS_DIR -Force | Out-Null
+        # 配置 Claude Code
+        if ($installClaude) {
+            if (-not (Test-Path $SETTINGS_DIR)) {
+                New-Item -ItemType Directory -Path $SETTINGS_DIR -Force | Out-Null
+            }
+
+            if ([string]::IsNullOrWhiteSpace($selectedModel)) {
+                $settingsObj = [ordered]@{
+                    env = [ordered]@{
+                        ANTHROPIC_BASE_URL = $DEFAULT_BASE_URL
+                        ANTHROPIC_API_KEY  = $apiKey
+                    }
+                }
+            } else {
+                $settingsObj = [ordered]@{
+                    env = [ordered]@{
+                        ANTHROPIC_BASE_URL             = $DEFAULT_BASE_URL
+                        ANTHROPIC_API_KEY              = $apiKey
+                        ANTHROPIC_DEFAULT_OPUS_MODEL   = $selectedModel
+                        ANTHROPIC_DEFAULT_SONNET_MODEL = $selectedModel
+                        ANTHROPIC_DEFAULT_HAIKU_MODEL  = $selectedModel
+                    }
+                }
+            }
+            $settingsObj | ConvertTo-Json -Depth 5 | Out-File -FilePath $SETTINGS_PATH -Encoding UTF8 -Force
+            Info "Claude Code 配置完成"
         }
 
+        # 配置 Codex
+        if ($installCodex) {
+            $codexHome = "$env:USERPROFILE\.codex"
+            if (-not (Test-Path $codexHome)) {
+                New-Item -ItemType Directory -Path $codexHome -Force | Out-Null
+            }
+
+            [ordered]@{ OPENAI_API_KEY = $apiKey } | ConvertTo-Json -Depth 5 | Out-File -FilePath "$codexHome\auth.json" -Encoding UTF8 -Force
+
+            $codexBaseUrl = "https://2api.cloud/v1"
+            $codexConfig = "model_provider = `"88code`"`r`n"
+            if (-not [string]::IsNullOrWhiteSpace($selectedModel)) {
+                $codexConfig += "model = `"$selectedModel`"`r`n"
+            }
+            $codexConfig += "`r`n[model_providers.88code]`r`nname = `"88code`"`r`nbase_url = `"$codexBaseUrl`"`r`nwire_api = `"responses`"`r`nrequires_openai_auth = true`r`n"
+            $codexConfig | Out-File -FilePath "$codexHome\config.toml" -Encoding UTF8 -Force
+            Info "Codex 配置完成"
+        }
+
+        Write-Host ""
         if ([string]::IsNullOrWhiteSpace($selectedModel)) {
-            $settingsObj = [ordered]@{
-                env = [ordered]@{
-                    ANTHROPIC_BASE_URL = $DEFAULT_BASE_URL
-                    ANTHROPIC_API_KEY  = $apiKey
-                }
-            }
-            $settingsObj | ConvertTo-Json -Depth 5 | Out-File -FilePath $SETTINGS_PATH -Encoding UTF8 -Force
-            Write-Host ""
-            Info "配置完成!"
-            Info "  模型: 使用服务默认"
+            Info "模型: 使用服务默认"
         } else {
-            $settingsObj = [ordered]@{
-                env = [ordered]@{
-                    ANTHROPIC_BASE_URL             = $DEFAULT_BASE_URL
-                    ANTHROPIC_API_KEY              = $apiKey
-                    ANTHROPIC_DEFAULT_OPUS_MODEL   = $selectedModel
-                    ANTHROPIC_DEFAULT_SONNET_MODEL = $selectedModel
-                    ANTHROPIC_DEFAULT_HAIKU_MODEL  = $selectedModel
-                }
-            }
-            $settingsObj | ConvertTo-Json -Depth 5 | Out-File -FilePath $SETTINGS_PATH -Encoding UTF8 -Force
-            Write-Host ""
-            Info "配置完成!"
-            Info "  模型: $selectedModel"
+            Info "模型: $selectedModel"
         }
     }
 } else {
@@ -249,11 +300,12 @@ Write-Host "  +--------------------------------------------------------+" -Foreg
 Write-Host ""
 Write-Host "  现在打开一个新的终端窗口，运行:"
 Write-Host ""
-Write-Host "    claude" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "  测试连接:"
-Write-Host ""
-Write-Host "    claude -p `"你好`" --output-format text" -ForegroundColor Cyan
+if ($installClaude) {
+    Write-Host "    claude" -ForegroundColor Cyan
+}
+if ($installCodex) {
+    Write-Host "    codex" -ForegroundColor Cyan
+}
 Write-Host ""
 
 # 状态检测
@@ -261,8 +313,15 @@ Write-Host "  安装状态:"
 Refresh-Path
 if (Test-Cmd "node")   { Info "Node.js $(& node --version 2>$null)" } else { Err "Node.js 未检测到" }
 if (Test-Cmd "git")    { Info "$(& git --version 2>$null)" }          else { Err "Git 未检测到" }
-if (Test-Cmd "claude") { Info "Claude Code 已就绪" }                  else { Warn "Claude Code 需重启终端" }
+if ($installClaude) {
+    if (Test-Cmd "claude") { Info "Claude Code 已就绪" } else { Warn "Claude Code 需重启终端" }
+}
+if ($installCodex) {
+    if (Test-Cmd "codex") { Info "Codex 已就绪" } else { Warn "Codex 需重启终端" }
+}
 if ((Test-Path $SETTINGS_PATH) -and (Select-String -Path $SETTINGS_PATH -Pattern "ANTHROPIC_API_KEY" -Quiet)) {
+    Info "API 令牌已配置"
+} elseif ((Test-Path "$env:USERPROFILE\.codex\auth.json")) {
     Info "API 令牌已配置"
 } else {
     Warn "API 令牌未配置"
