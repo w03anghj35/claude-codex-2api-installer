@@ -9,21 +9,39 @@
 
 ## 快速开始
 
-**macOS / Linux** — 打开终端，粘贴这一行命令，回车：
+复制一行命令到终端，回车即可。
+
+### macOS / Linux
 
 ```bash
+# GitHub (海外网络)
 curl -fsSL https://raw.githubusercontent.com/w03anghj35/claude-codex-2api-installer/main/setup.sh | bash
+
+# Gitee 国内镜像 (推荐国内用户)
+curl -fsSL https://gitee.com/你的Gitee用户名/claude-codex-2api-installer/raw/main/setup.sh | bash
+
+# GitHub 加速 (如果上面两个都不行)
+curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/w03anghj35/claude-codex-2api-installer/main/setup.sh | bash
 ```
 
-**Windows** — 以管理员身份打开 PowerShell，粘贴这一行命令，回车：
+### Windows
+
+以管理员身份打开 PowerShell，粘贴命令：
 
 ```powershell
+# GitHub (海外网络)
 irm https://raw.githubusercontent.com/w03anghj35/claude-codex-2api-installer/main/setup.ps1 | iex
+
+# Gitee 国内镜像 (推荐国内用户)
+irm https://gitee.com/你的Gitee用户名/claude-codex-2api-installer/raw/main/setup.ps1 | iex
+
+# GitHub 加速 (如果上面两个都不行)
+irm https://ghfast.top/https://raw.githubusercontent.com/w03anghj35/claude-codex-2api-installer/main/setup.ps1 | iex
 ```
 
-就这么简单。脚本会自动安装 Node.js、Git、Claude Code，并引导你配置 API 令牌。
-
-> 如果 Windows 提示脚本执行策略问题，先运行：`Set-ExecutionPolicy Bypass -Scope Process`
+> 三选一，哪个能用就用哪个。脚本会自动安装 Node.js、Git、Claude Code，并引导你配置 API 令牌。
+>
+> Windows 如果提示脚本执行策略问题，先运行：`Set-ExecutionPolicy Bypass -Scope Process`
 
 ## 适合谁用
 
@@ -31,12 +49,19 @@ irm https://raw.githubusercontent.com/w03anghj35/claude-codex-2api-installer/mai
 - 已经有 2api 令牌，希望一键写入配置的用户
 - 想把工具上传到 GitHub，让别人下载后照着操作的用户
 
-## 从 GitHub 下载
+## 从 GitHub / Gitee 下载
 
-1. 打开本项目的 GitHub 页面。
-2. 点击绿色的 `Code` 按钮。
-3. 点击 `Download ZIP`。
-4. 下载完成后解压，不要只单独下载某一个文件。
+**GitHub：**
+
+1. 打开本项目的 [GitHub 页面](https://github.com/w03anghj35/claude-codex-2api-installer)。
+2. 点击绿色的 `Code` 按钮 → `Download ZIP`。
+
+**Gitee（国内推荐）：**
+
+1. 打开本项目的 [Gitee 页面](https://gitee.com/你的Gitee用户名/claude-codex-2api-installer)。
+2. 点击 `克隆/下载` → `下载ZIP`。
+
+下载完成后解压，不要只单独下载某一个文件。
 
 ## Windows 用户
 
@@ -54,10 +79,17 @@ irm https://raw.githubusercontent.com/w03anghj35/claude-codex-2api-installer/mai
 
 ## macOS / Linux 用户
 
-推荐方式 — 一行命令搞定：
+推荐方式 — 一行命令搞定（三选一）：
 
 ```bash
+# Gitee 国内镜像 (推荐)
+curl -fsSL https://gitee.com/你的Gitee用户名/claude-codex-2api-installer/raw/main/setup.sh | bash
+
+# GitHub
 curl -fsSL https://raw.githubusercontent.com/w03anghj35/claude-codex-2api-installer/main/setup.sh | bash
+
+# GitHub 加速
+curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/w03anghj35/claude-codex-2api-installer/main/setup.sh | bash
 ```
 
 按照提示选择模型、粘贴令牌就完成了。
