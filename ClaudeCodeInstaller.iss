@@ -34,13 +34,13 @@ ArchitecturesInstallIn64BitMode=x64compatible
 ShowLanguageDialog=no
 
 [Languages]
-Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+Name: "default"; MessagesFile: "compiler:Default.isl"
 
 [Messages]
-chinesesimplified.WelcomeLabel1=欢迎使用 Claude / Codex 安装助手
-chinesesimplified.WelcomeLabel2=本程序将帮助您一键安装和配置 Claude Code 或 Codex，并引导配置 2api。%n%n令牌获取地址：{#TokenURL}%n%n建议关闭其他应用程序后再继续。
-chinesesimplified.FinishedHeadingLabel=安装完成
-chinesesimplified.FinishedLabel=Claude Code 安装流程已完成。%n%n请打开新的 PowerShell 或 CMD 窗口，运行 "claude" 命令开始使用。
+default.WelcomeLabel1=欢迎使用 Claude / Codex 安装助手
+default.WelcomeLabel2=本程序将帮助您一键安装和配置 Claude Code 或 Codex，并引导配置 2api。%n%n令牌获取地址：{#TokenURL}%n%n建议关闭其他应用程序后再继续。
+default.FinishedHeadingLabel=安装完成
+default.FinishedLabel=Claude Code 安装流程已完成。%n%n请打开新的 PowerShell 或 CMD 窗口，运行 "claude" 命令开始使用。
 
 [Files]
 Source: "install.ps1"; DestDir: "{app}"; Flags: ignoreversion

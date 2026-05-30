@@ -158,7 +158,6 @@ function Save-CodexConfig {
 name = "88code"
 base_url = "$BaseUrl"
 wire_api = "responses"
-env_key = "key88"
 requires_openai_auth = true
 
 "@
@@ -684,7 +683,6 @@ $testButton.Add_Click({
 Update-ModeUi
 Add-Status "界面已启动。请先选择 Claude Code 或 Codex。"
 [void]$form.ShowDialog()
-
 
 
 
