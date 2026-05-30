@@ -18,7 +18,7 @@
 curl -fsSL https://raw.githubusercontent.com/w03anghj35/claude-codex-2api-installer/main/setup.sh | bash
 
 # Gitee 国内镜像 (推荐国内用户)
-curl -fsSL https://gitee.com/你的Gitee用户名/claude-codex-2api-installer/raw/main/setup.sh | bash
+curl -fsSL https://gitee.com/wanghaojieaiyue/claude-codex-2api-installer/raw/main/setup.sh | bash
 
 # GitHub 加速 (如果上面两个都不行)
 curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/w03anghj35/claude-codex-2api-installer/main/setup.sh | bash
@@ -33,7 +33,7 @@ curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/w03anghj35/claud
 irm https://raw.githubusercontent.com/w03anghj35/claude-codex-2api-installer/main/setup.ps1 | iex
 
 # Gitee 国内镜像 (推荐国内用户)
-irm https://gitee.com/你的Gitee用户名/claude-codex-2api-installer/raw/main/setup.ps1 | iex
+irm https://gitee.com/wanghaojieaiyue/claude-codex-2api-installer/raw/main/setup.ps1 | iex
 
 # GitHub 加速 (如果上面两个都不行)
 irm https://ghfast.top/https://raw.githubusercontent.com/w03anghj35/claude-codex-2api-installer/main/setup.ps1 | iex
@@ -58,7 +58,7 @@ irm https://ghfast.top/https://raw.githubusercontent.com/w03anghj35/claude-codex
 
 **Gitee（国内推荐）：**
 
-1. 打开本项目的 [Gitee 页面](https://gitee.com/你的Gitee用户名/claude-codex-2api-installer)。
+1. 打开本项目的 [Gitee 页面](https://gitee.com/wanghaojieaiyue/claude-codex-2api-installer)。
 2. 点击 `克隆/下载` → `下载ZIP`。
 
 下载完成后解压，不要只单独下载某一个文件。
@@ -83,7 +83,7 @@ irm https://ghfast.top/https://raw.githubusercontent.com/w03anghj35/claude-codex
 
 ```bash
 # Gitee 国内镜像 (推荐)
-curl -fsSL https://gitee.com/你的Gitee用户名/claude-codex-2api-installer/raw/main/setup.sh | bash
+curl -fsSL https://gitee.com/wanghaojieaiyue/claude-codex-2api-installer/raw/main/setup.sh | bash
 
 # GitHub
 curl -fsSL https://raw.githubusercontent.com/w03anghj35/claude-codex-2api-installer/main/setup.sh | bash
