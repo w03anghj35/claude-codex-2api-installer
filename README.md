@@ -26,7 +26,7 @@ curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/w03anghj35/claud
 
 ### Windows
 
-以管理员身份打开 PowerShell，粘贴命令：
+以管理员身份打开 **PowerShell**（不是 CMD），粘贴命令：
 
 ```powershell
 # GitHub (海外网络)
@@ -37,6 +37,12 @@ irm https://gitee.com/wanghaojieaiyue/claude-codex-2api-installer/raw/main/setup
 
 # GitHub 加速 (如果上面两个都不行)
 irm https://ghfast.top/https://raw.githubusercontent.com/w03anghj35/claude-codex-2api-installer/main/setup.ps1 | iex
+```
+
+如果你只有 CMD（命令提示符），用这个：
+
+```cmd
+powershell -ExecutionPolicy Bypass -Command "irm https://gitee.com/wanghaojieaiyue/claude-codex-2api-installer/raw/main/setup.ps1 | iex"
 ```
 
 > 三选一，哪个能用就用哪个。脚本会自动安装 Node.js、Git、Claude Code，并引导你配置 API 令牌。

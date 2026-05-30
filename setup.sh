@@ -233,21 +233,22 @@ echo ""
 echo "  Claude Code 需要一个 API 令牌才能运行。"
 echo -e "  获取令牌: ${CYAN}${TOKEN_URL}${NC}"
 echo ""
-echo "  可用模型:"
-echo "    [1] glm-5         - 旗舰模型，最强 (推荐)"
-echo "    [2] glm-4.7       - 编程增强，日常使用"
-echo "    [3] glm-4.5       - Agent 基座"
-echo "    [4] glm-4.7-flash - 轻量快速"
-echo "    [5] glm-4-flash   - 免费模型"
-echo "    [6] 跳过，稍后手动配置"
+echo "  可用模型 (留空使用服务默认模型):"
+echo "    [1] 不指定模型，使用服务默认 (推荐)"
+echo "    [2] glm-5         - 旗舰模型，最强"
+echo "    [3] glm-4.7       - 编程增强，日常使用"
+echo "    [4] glm-4.5       - Agent 基座"
+echo "    [5] glm-4.7-flash - 轻量快速"
+echo "    [6] glm-4-flash   - 免费模型"
+echo "    [7] 跳过，稍后手动配置"
 echo ""
 
-glm_models=("glm-5" "glm-4.7" "glm-4.5" "glm-4.7-flash" "glm-4-flash")
+glm_models=("" "glm-5" "glm-4.7" "glm-4.5" "glm-4.7-flash" "glm-4-flash")
 
-read -rp "  请选择模型 [1-6] (默认 1): " model_choice
+read -rp "  请选择模型 [1-7] (默认 1): " model_choice
 model_choice=${model_choice:-1}
 
-if [ "$model_choice" -ge 1 ] 2>/dev/null && [ "$model_choice" -le 5 ] 2>/dev/null; then
+if [ "$model_choice" -ge 1 ] 2>/dev/null && [ "$model_choice" -le 6 ] 2>/dev/null; then
     echo ""
     read -rp "  是否打开浏览器获取令牌? [Y/n]: " open_browser
     if [ "$open_browser" != "n" ] && [ "$open_browser" != "N" ]; then
@@ -263,31 +264,38 @@ if [ "$model_choice" -ge 1 ] 2>/dev/null && [ "$model_choice" -le 5 ] 2>/dev/nul
         warn "稍后可运行: bash setup.sh 重新配置"
     else
         idx=$((model_choice - 1))
-        opus_model="${glm_models[$idx]}"
-        if [ "$idx" -le 1 ]; then
-            sonnet_model="glm-4.7"
-        else
-            sonnet_model="${glm_models[$idx]}"
-        fi
-        haiku_model="glm-4.5-air"
+        selected_model="${glm_models[$idx]}"
 
         mkdir -p "$SETTINGS_DIR"
-        cat > "$SETTINGS_PATH" << EOF
+
+        if [ -z "$selected_model" ]; then
+            cat > "$SETTINGS_PATH" << EOF
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "${DEFAULT_BASE_URL}",
+    "ANTHROPIC_API_KEY": "${api_key}"
+  }
+}
+EOF
+            echo ""
+            info "配置完成!"
+            info "  模型: 使用服务默认"
+        else
+            cat > "$SETTINGS_PATH" << EOF
 {
   "env": {
     "ANTHROPIC_BASE_URL": "${DEFAULT_BASE_URL}",
     "ANTHROPIC_API_KEY": "${api_key}",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "${opus_model}",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "${sonnet_model}",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "${haiku_model}"
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "${selected_model}",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "${selected_model}",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "${selected_model}"
   }
 }
 EOF
-        echo ""
-        info "配置完成!"
-        info "  主力模型: $opus_model"
-        info "  日常模型: $sonnet_model"
-        info "  轻量模型: $haiku_model"
+            echo ""
+            info "配置完成!"
+            info "  模型: $selected_model"
+        fi
     fi
 else
     info "跳过 API 配置，稍后可重新运行本脚本"

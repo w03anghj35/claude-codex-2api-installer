@@ -302,25 +302,27 @@ else
 
     echo ""
     echo -e "  ${YELLOW}================================================================${NC}"
-    echo -e "  ${YELLOW} 配置智谱 GLM API，让 Claude Code 通过 GLM 模型运行${NC}"
+    echo -e "  ${YELLOW} 配置 API，让 Claude Code 通过 2api 运行${NC}"
     echo -e "  ${YELLOW}================================================================${NC}"
     echo ""
     echo -e "  ${CYAN}获取令牌: https://2api.cloud/console/token${NC}"
     echo ""
-    echo "  可用模型:"
-    echo "    [1] glm-5        - 旗舰模型 745B MoE，最强（对标 Claude Opus）  <- 推荐"
-    echo "    [2] glm-4.7      - 编程增强 SWE-bench 73.8（对标 Claude Sonnet）"
-    echo "    [3] glm-4.5      - Agent 基座，工具调用优化"
-    echo "    [4] glm-4.7-flash - 30B MoE 轻量快速（对标 Claude Haiku）"
-    echo "    [5] glm-4-flash  - 免费模型，轻量任务"
-    echo "    [6] 暂时跳过，稍后手动配置"
+    echo "  可用模型 (留空使用服务默认模型):"
+    echo "    [1] 不指定模型，使用服务默认  <- 推荐"
+    echo "    [2] glm-5        - 旗舰模型 745B MoE，最强"
+    echo "    [3] glm-4.7      - 编程增强 SWE-bench 73.8"
+    echo "    [4] glm-4.5      - Agent 基座，工具调用优化"
+    echo "    [5] glm-4.7-flash - 30B MoE 轻量快速"
+    echo "    [6] glm-4-flash  - 免费模型，轻量任务"
+    echo "    [7] 暂时跳过，稍后手动配置"
     echo ""
 
-    glm_models=("glm-5" "glm-4.7" "glm-4.5" "glm-4.7-flash" "glm-4-flash")
+    glm_models=("" "glm-5" "glm-4.7" "glm-4.5" "glm-4.7-flash" "glm-4-flash")
 
-    read -rp "  请输入选项编号 (1-6): " provider_choice
+    read -rp "  请输入选项编号 (1-7, 默认 1): " provider_choice
+    provider_choice=${provider_choice:-1}
 
-    if [ "$provider_choice" -ge 1 ] 2>/dev/null && [ "$provider_choice" -le 5 ] 2>/dev/null; then
+    if [ "$provider_choice" -ge 1 ] 2>/dev/null && [ "$provider_choice" -le 6 ] 2>/dev/null; then
         echo ""
         read -rp "  是否打开浏览器获取令牌? (Y/n): " open_browser
         if [ "$open_browser" != "n" ] && [ "$open_browser" != "N" ]; then
@@ -336,38 +338,42 @@ else
             write_warn "您可以稍后运行 ./configure-api.sh 进行配置"
         else
             model_index=$((provider_choice - 1))
-            opus_model="${glm_models[$model_index]}"
-
-            if [ "$model_index" -le 1 ]; then
-                sonnet_model="glm-4.7"
-            else
-                sonnet_model="${glm_models[$model_index]}"
-            fi
-            haiku_model="glm-4.5-air"
+            selected_model="${glm_models[$model_index]}"
 
             glm_base_url="https://2api.cloud/"
-
             claude_config_dir="$HOME/.claude"
             mkdir -p "$claude_config_dir"
 
-            cat > "$claude_config_dir/settings.json" << SETTINGS_EOF
+            if [ -z "$selected_model" ]; then
+                cat > "$claude_config_dir/settings.json" << SETTINGS_EOF
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "$glm_base_url",
+    "ANTHROPIC_API_KEY": "$api_key"
+  }
+}
+SETTINGS_EOF
+                write_info "配置完成:"
+                echo -e "    ${GRAY}ANTHROPIC_BASE_URL = $glm_base_url${NC}"
+                echo -e "    ${GRAY}ANTHROPIC_API_KEY  = ${api_key:0:8}****${NC}"
+                echo -e "    ${GRAY}模型: 使用服务默认${NC}"
+            else
+                cat > "$claude_config_dir/settings.json" << SETTINGS_EOF
 {
   "env": {
     "ANTHROPIC_BASE_URL": "$glm_base_url",
     "ANTHROPIC_API_KEY": "$api_key",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "$haiku_model",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "$sonnet_model",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "$opus_model"
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "$selected_model",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "$selected_model",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "$selected_model"
   }
 }
 SETTINGS_EOF
-
-            write_info "配置完成:"
-            echo -e "    ${GRAY}ANTHROPIC_BASE_URL             = $glm_base_url${NC}"
-            echo -e "    ${GRAY}ANTHROPIC_API_KEY              = ${api_key:0:8}****${NC}"
-            echo -e "    ${GRAY}ANTHROPIC_DEFAULT_OPUS_MODEL   = $opus_model${NC}"
-            echo -e "    ${GRAY}ANTHROPIC_DEFAULT_SONNET_MODEL = $sonnet_model${NC}"
-            echo -e "    ${GRAY}ANTHROPIC_DEFAULT_HAIKU_MODEL  = $haiku_model${NC}"
+                write_info "配置完成:"
+                echo -e "    ${GRAY}ANTHROPIC_BASE_URL = $glm_base_url${NC}"
+                echo -e "    ${GRAY}ANTHROPIC_API_KEY  = ${api_key:0:8}****${NC}"
+                echo -e "    ${GRAY}模型: $selected_model${NC}"
+            fi
             write_info "Claude Code 配置文件已写入: $claude_config_dir/settings.json"
         fi
     else

@@ -267,28 +267,30 @@ if ($SkipApiConfig) {
     Write-Info "已跳过命令行 API 配置，可稍后在界面或 configure-api.ps1 中配置。"
 }
 else {
-Write-Step "步骤 5/5: 配置智谱 GLM API"
+Write-Step "步骤 5/5: 配置 API"
 
 Write-Host ""
 Write-Host "  ================================================================" -ForegroundColor Yellow
-Write-Host "   配置智谱 GLM API，让 Claude Code 通过 GLM 模型运行" -ForegroundColor Yellow
+Write-Host "   配置 API，让 Claude Code 通过 2api 运行" -ForegroundColor Yellow
 Write-Host "  ================================================================" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "  获取令牌: https://2api.cloud/console/token" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "  可用模型:" -ForegroundColor White
-Write-Host "    [1] glm-5        - 旗舰模型 745B MoE，最强（对标 Claude Opus）  ← 推荐" -ForegroundColor White
-Write-Host "    [2] glm-4.7      - 编程增强 SWE-bench 73.8（对标 Claude Sonnet）" -ForegroundColor White
-Write-Host "    [3] glm-4.5      - Agent 基座，工具调用优化" -ForegroundColor White
-Write-Host "    [4] glm-4.7-flash - 30B MoE 轻量快速（对标 Claude Haiku）" -ForegroundColor White
-Write-Host "    [5] glm-4-flash  - 免费模型，轻量任务" -ForegroundColor White
-Write-Host "    [6] 暂时跳过，稍后手动配置" -ForegroundColor White
+Write-Host "  可用模型 (留空使用服务默认模型):" -ForegroundColor White
+Write-Host "    [1] 不指定模型，使用服务默认  <- 推荐" -ForegroundColor White
+Write-Host "    [2] glm-5        - 旗舰模型 745B MoE，最强" -ForegroundColor White
+Write-Host "    [3] glm-4.7      - 编程增强 SWE-bench 73.8" -ForegroundColor White
+Write-Host "    [4] glm-4.5      - Agent 基座，工具调用优化" -ForegroundColor White
+Write-Host "    [5] glm-4.7-flash - 30B MoE 轻量快速" -ForegroundColor White
+Write-Host "    [6] glm-4-flash  - 免费模型，轻量任务" -ForegroundColor White
+Write-Host "    [7] 暂时跳过，稍后手动配置" -ForegroundColor White
 Write-Host ""
 
-$glmModels = @("glm-5", "glm-4.7", "glm-4.5", "glm-4.7-flash", "glm-4-flash")
-$providerChoice = Read-Host "  请输入选项编号 (1-6)"
+$glmModels = @("", "glm-5", "glm-4.7", "glm-4.5", "glm-4.7-flash", "glm-4-flash")
+$providerChoice = Read-Host "  请输入选项编号 (1-7, 默认 1)"
+if ([string]::IsNullOrWhiteSpace($providerChoice)) { $providerChoice = "1" }
 
-if ($providerChoice -ge "1" -and $providerChoice -le "5") {
+if ($providerChoice -ge "1" -and $providerChoice -le "6") {
     Write-Host ""
 
     $openBrowser = Read-Host "  是否打开浏览器获取令牌? (Y/n)"
@@ -305,37 +307,44 @@ if ($providerChoice -ge "1" -and $providerChoice -le "5") {
         Write-Warn "您可以稍后运行 configure-api.ps1 进行配置"
     }
     else {
-        $modelIndex  = [int]$providerChoice - 1
-        $opusModel   = $glmModels[$modelIndex]          # 用户选择的主力模型
-        $sonnetModel = if ($modelIndex -le 1) { "glm-4.7" } else { $glmModels[$modelIndex] }
-        $haikuModel  = "glm-4.5-air"
+        $modelIndex = [int]$providerChoice - 1
+        $selectedModel = $glmModels[$modelIndex]
 
-        # 2api Anthropic 兼容端点
         $glmBaseUrl = "https://2api.cloud/"
 
-        # 创建 Claude Code 配置文件（官方推荐方式：通过 env 字段做模型映射）
         $claudeConfigDir = "$env:USERPROFILE\.claude"
         if (-not (Test-Path $claudeConfigDir)) {
             New-Item -ItemType Directory -Path $claudeConfigDir -Force | Out-Null
         }
 
-        $settingsObj = [ordered]@{
-            env = [ordered]@{
-                ANTHROPIC_BASE_URL             = $glmBaseUrl
-                ANTHROPIC_API_KEY              = $apiKey
-                ANTHROPIC_DEFAULT_HAIKU_MODEL  = $haikuModel
-                ANTHROPIC_DEFAULT_SONNET_MODEL = $sonnetModel
-                ANTHROPIC_DEFAULT_OPUS_MODEL   = $opusModel
+        if ([string]::IsNullOrWhiteSpace($selectedModel)) {
+            $settingsObj = [ordered]@{
+                env = [ordered]@{
+                    ANTHROPIC_BASE_URL = $glmBaseUrl
+                    ANTHROPIC_API_KEY  = $apiKey
+                }
+            }
+        } else {
+            $settingsObj = [ordered]@{
+                env = [ordered]@{
+                    ANTHROPIC_BASE_URL             = $glmBaseUrl
+                    ANTHROPIC_API_KEY              = $apiKey
+                    ANTHROPIC_DEFAULT_HAIKU_MODEL  = $selectedModel
+                    ANTHROPIC_DEFAULT_SONNET_MODEL = $selectedModel
+                    ANTHROPIC_DEFAULT_OPUS_MODEL   = $selectedModel
+                }
             }
         }
         $settingsObj | ConvertTo-Json -Depth 5 | Out-File -FilePath "$claudeConfigDir\settings.json" -Encoding UTF8 -Force
 
         Write-Info "配置完成:"
-        Write-Host "    ANTHROPIC_BASE_URL             = $glmBaseUrl" -ForegroundColor Gray
-        Write-Host "    ANTHROPIC_API_KEY              = $($apiKey.Substring(0, [Math]::Min(8, $apiKey.Length)))****" -ForegroundColor Gray
-        Write-Host "    ANTHROPIC_DEFAULT_OPUS_MODEL   = $opusModel" -ForegroundColor Gray
-        Write-Host "    ANTHROPIC_DEFAULT_SONNET_MODEL = $sonnetModel" -ForegroundColor Gray
-        Write-Host "    ANTHROPIC_DEFAULT_HAIKU_MODEL  = $haikuModel" -ForegroundColor Gray
+        Write-Host "    ANTHROPIC_BASE_URL = $glmBaseUrl" -ForegroundColor Gray
+        Write-Host "    ANTHROPIC_API_KEY  = $($apiKey.Substring(0, [Math]::Min(8, $apiKey.Length)))****" -ForegroundColor Gray
+        if ([string]::IsNullOrWhiteSpace($selectedModel)) {
+            Write-Host "    模型: 使用服务默认" -ForegroundColor Gray
+        } else {
+            Write-Host "    模型: $selectedModel" -ForegroundColor Gray
+        }
         Write-Info "Claude Code 配置文件已写入: $claudeConfigDir\settings.json"
     }
 }

@@ -100,15 +100,32 @@ if 'env' not in settings:
 settings['env']['ANTHROPIC_BASE_URL'] = '$base_url'
 settings['env']['ANTHROPIC_API_KEY'] = '$api_key'
 settings['env'].pop('ANTHROPIC_AUTH_TOKEN', None)
-settings['env']['ANTHROPIC_DEFAULT_HAIKU_MODEL'] = '$haiku_model'
-settings['env']['ANTHROPIC_DEFAULT_SONNET_MODEL'] = '$sonnet_model'
-settings['env']['ANTHROPIC_DEFAULT_OPUS_MODEL'] = '$opus_model'
+
+opus = '$opus_model'
+sonnet = '$sonnet_model'
+haiku = '$haiku_model'
+
+for key, val in [('ANTHROPIC_DEFAULT_OPUS_MODEL', opus), ('ANTHROPIC_DEFAULT_SONNET_MODEL', sonnet), ('ANTHROPIC_DEFAULT_HAIKU_MODEL', haiku)]:
+    if val:
+        settings['env'][key] = val
+    else:
+        settings['env'].pop(key, None)
 
 with open(path, 'w') as f:
     json.dump(settings, f, indent=2, ensure_ascii=False)
 "
     else
-        cat > "$SETTINGS_PATH" << EOF
+        if [ -z "$opus_model" ] && [ -z "$sonnet_model" ] && [ -z "$haiku_model" ]; then
+            cat > "$SETTINGS_PATH" << EOF
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "$base_url",
+    "ANTHROPIC_API_KEY": "$api_key"
+  }
+}
+EOF
+        else
+            cat > "$SETTINGS_PATH" << EOF
 {
   "env": {
     "ANTHROPIC_BASE_URL": "$base_url",
@@ -119,6 +136,7 @@ with open(path, 'w') as f:
   }
 }
 EOF
+        fi
     fi
 }
 
@@ -330,17 +348,35 @@ while true; do
                 continue
             fi
 
-            selected_opus=$(select_model "请选择主力模型（对标 Claude Opus，用于复杂任务）:" 0)
-            selected_sonnet=$(select_model "请选择日常模型（对标 Claude Sonnet，用于普通任务）:" 1)
-            selected_haiku="glm-4.5-air"
-
-            save_settings "$DEFAULT_BASE_URL" "$api_key" "$selected_opus" "$selected_sonnet" "$selected_haiku"
-
             echo ""
-            echo -e "  ${GREEN}[成功] 智谱 GLM 配置完成!${NC}"
-            echo -e "  ${GREEN}主力模型 (Opus):  $selected_opus${NC}"
-            echo -e "  ${GREEN}日常模型 (Sonnet): $selected_sonnet${NC}"
-            echo -e "  ${GREEN}轻量模型 (Haiku):  $selected_haiku${NC}"
+            echo "  选择模型 (留空使用服务默认):"
+            echo "    [0] 不指定模型，使用服务默认  <- 推荐"
+            for i in "${!GLM_MODELS[@]}"; do
+                echo "    [$((i + 1))] ${GLM_MODELS[$i]} - ${GLM_DESCS[$i]}"
+            done
+            read -rp "  请选择 (默认 0): " model_choice
+            model_choice=${model_choice:-0}
+
+            if [ "$model_choice" = "0" ]; then
+                save_settings "$DEFAULT_BASE_URL" "$api_key" "" "" ""
+                echo ""
+                echo -e "  ${GREEN}[成功] 配置完成!${NC}"
+                echo -e "  ${GREEN}模型: 使用服务默认${NC}"
+            else
+                local idx=$((model_choice - 1))
+                if [ "$idx" -ge 0 ] && [ "$idx" -lt "${#GLM_MODELS[@]}" ]; then
+                    local selected="${GLM_MODELS[$idx]}"
+                    save_settings "$DEFAULT_BASE_URL" "$api_key" "$selected" "$selected" "$selected"
+                    echo ""
+                    echo -e "  ${GREEN}[成功] 配置完成!${NC}"
+                    echo -e "  ${GREEN}模型: $selected${NC}"
+                else
+                    save_settings "$DEFAULT_BASE_URL" "$api_key" "" "" ""
+                    echo ""
+                    echo -e "  ${GREEN}[成功] 配置完成!${NC}"
+                    echo -e "  ${GREEN}模型: 使用服务默认${NC}"
+                fi
+            fi
             echo -e "  ${GRAY}配置已写入: $SETTINGS_PATH${NC}"
             read -rp "  按 Enter 返回主菜单"
             ;;
@@ -379,15 +415,10 @@ while true; do
             fi
 
             echo ""
-            echo "  请填写三个模型槽位对应的模型名。"
+            echo "  请填写模型名（全部留空则使用服务默认模型）。"
             echo -e "  ${GRAY}Opus = 主力/复杂任务，Sonnet = 日常，Haiku = 轻量/快速。${NC}"
 
-            read -rp "  Opus 模型名（主力）: " opus_model
-            if [ -z "$opus_model" ]; then
-                echo -e "  ${YELLOW}[警告] 未输入 Opus 模型名，操作取消。${NC}"
-                read -rp "  按 Enter 返回主菜单"
-                continue
-            fi
+            read -rp "  Opus 模型名（主力，留空使用默认）: " opus_model
 
             read -rp "  Sonnet 模型名（日常，留空则使用 Opus 模型）: " sonnet_model
             [ -z "$sonnet_model" ] && sonnet_model="$opus_model"

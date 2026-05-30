@@ -323,17 +323,35 @@ while ($true) {
             continue
         }
 
-        $selectedOpus = Select-Model -Title "请选择主力模型（对标 Claude Opus，用于复杂任务）:" -DefaultIndex 0
-        $selectedSonnet = Select-Model -Title "请选择日常模型（对标 Claude Sonnet，用于普通任务）:" -DefaultIndex 1
-        $selectedHaiku = "glm-4.5-air"
-
-        Set-ApiConfig -ApiKey $apiKey -OpusModel $selectedOpus -SonnetModel $selectedSonnet -HaikuModel $selectedHaiku
-
         Write-Host ""
-        Write-Host "  [成功] 智谱 GLM 配置完成!" -ForegroundColor Green
-        Write-Host "  主力模型 (Opus):  $selectedOpus" -ForegroundColor Green
-        Write-Host "  日常模型 (Sonnet): $selectedSonnet" -ForegroundColor Green
-        Write-Host "  轻量模型 (Haiku):  $selectedHaiku" -ForegroundColor Green
+        Write-Host "  选择模型 (留空使用服务默认):" -ForegroundColor White
+        Write-Host "    [0] 不指定模型，使用服务默认  <- 推荐" -ForegroundColor White
+        for ($i = 0; $i -lt $GLM_MODELS.Count; $i++) {
+            Write-Host "    [$($i + 1)] $($GLM_MODELS[$i].Name) - $($GLM_MODELS[$i].Desc)" -ForegroundColor White
+        }
+        $modelChoice = Read-Host "  请选择 (默认 0)"
+        if ([string]::IsNullOrWhiteSpace($modelChoice)) { $modelChoice = "0" }
+
+        if ($modelChoice -eq "0") {
+            Set-ApiConfig -ApiKey $apiKey -OpusModel "" -SonnetModel "" -HaikuModel ""
+            Write-Host ""
+            Write-Host "  [成功] 配置完成!" -ForegroundColor Green
+            Write-Host "  模型: 使用服务默认" -ForegroundColor Green
+        } else {
+            $idx = [int]$modelChoice - 1
+            if ($idx -ge 0 -and $idx -lt $GLM_MODELS.Count) {
+                $selected = $GLM_MODELS[$idx].Name
+                Set-ApiConfig -ApiKey $apiKey -OpusModel $selected -SonnetModel $selected -HaikuModel $selected
+                Write-Host ""
+                Write-Host "  [成功] 配置完成!" -ForegroundColor Green
+                Write-Host "  模型: $selected" -ForegroundColor Green
+            } else {
+                Set-ApiConfig -ApiKey $apiKey -OpusModel "" -SonnetModel "" -HaikuModel ""
+                Write-Host ""
+                Write-Host "  [成功] 配置完成!" -ForegroundColor Green
+                Write-Host "  模型: 使用服务默认" -ForegroundColor Green
+            }
+        }
         Write-Host "  配置已写入: $SETTINGS_PATH" -ForegroundColor Gray
         Read-Host "  按 Enter 返回主菜单"
     }
@@ -372,15 +390,10 @@ while ($true) {
         }
 
         Write-Host ""
-        Write-Host "  请填写三个模型槽位对应的模型名。" -ForegroundColor White
+        Write-Host "  请填写模型名（全部留空则使用服务默认模型）。" -ForegroundColor White
         Write-Host "  Opus = 主力/复杂任务，Sonnet = 日常，Haiku = 轻量/快速。" -ForegroundColor Gray
 
-        $opusModel = Read-Host "  Opus 模型名（主力）"
-        if ([string]::IsNullOrWhiteSpace($opusModel)) {
-            Write-Host "  [警告] 未输入 Opus 模型名，操作取消。" -ForegroundColor Yellow
-            Read-Host "  按 Enter 返回主菜单"
-            continue
-        }
+        $opusModel = Read-Host "  Opus 模型名（主力，留空使用默认）"
 
         $sonnetModel = Read-Host "  Sonnet 模型名（日常，留空则使用 Opus 模型）"
         if ([string]::IsNullOrWhiteSpace($sonnetModel)) { $sonnetModel = $opusModel }
