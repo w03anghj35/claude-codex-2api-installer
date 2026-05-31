@@ -266,44 +266,27 @@ echo ""
 echo "  需要一个 API 令牌才能运行。"
 echo -e "  获取令牌: ${CYAN}${TOKEN_URL}${NC}"
 echo ""
-echo "  可用模型 (留空使用服务默认模型):"
-echo "    [1] 不指定模型，使用服务默认 (推荐)"
-echo "    [2] glm-5         - 旗舰模型，最强"
-echo "    [3] glm-4.7       - 编程增强，日常使用"
-echo "    [4] glm-4.5       - Agent 基座"
-echo "    [5] glm-4.7-flash - 轻量快速"
-echo "    [6] glm-4-flash   - 免费模型"
-echo "    [7] 跳过，稍后手动配置"
-echo ""
 
-glm_models=("" "glm-5" "glm-4.7" "glm-4.5" "glm-4.7-flash" "glm-4-flash")
-
-read -rp "  请选择模型 [1-7] (默认 1): " model_choice
-model_choice=${model_choice:-1}
-
-if [ "$model_choice" -ge 1 ] 2>/dev/null && [ "$model_choice" -le 6 ] 2>/dev/null; then
+read -rp "  是否打开浏览器获取令牌? [Y/n]: " open_browser
+if [ "$open_browser" != "n" ] && [ "$open_browser" != "N" ]; then
+    open_url "$TOKEN_URL"
+    info "已尝试打开浏览器，如未打开请手动访问上面的地址"
     echo ""
-    read -rp "  是否打开浏览器获取令牌? [Y/n]: " open_browser
-    if [ "$open_browser" != "n" ] && [ "$open_browser" != "N" ]; then
-        open_url "$TOKEN_URL"
-        info "已尝试打开浏览器，如未打开请手动访问上面的地址"
-        echo ""
-    fi
+fi
 
-    read -rp "  请粘贴你的令牌: " api_key
+read -rp "  请粘贴你的令牌 (输入 S 跳过): " api_key
 
-    if [ -z "$api_key" ]; then
-        warn "未输入令牌，跳过配置"
-        warn "稍后可运行: bash setup.sh 重新配置"
-    else
-        idx=$((model_choice - 1))
-        selected_model="${glm_models[$idx]}"
+if [ -z "$api_key" ] || [ "$api_key" = "S" ] || [ "$api_key" = "s" ]; then
+    info "跳过 API 配置，稍后可重新运行本脚本"
+else
+    echo ""
+    read -rp "  输入模型名 (留空使用服务默认，推荐直接回车): " selected_model
 
-        # 配置 Claude Code
-        if [ "$install_claude" = true ]; then
-            mkdir -p "$SETTINGS_DIR"
-            if [ -z "$selected_model" ]; then
-                cat > "$SETTINGS_PATH" << EOF
+    # 配置 Claude Code
+    if [ "$install_claude" = true ]; then
+        mkdir -p "$SETTINGS_DIR"
+        if [ -z "$selected_model" ]; then
+            cat > "$SETTINGS_PATH" << EOF
 {
   "env": {
     "ANTHROPIC_BASE_URL": "${DEFAULT_BASE_URL}",
@@ -311,8 +294,8 @@ if [ "$model_choice" -ge 1 ] 2>/dev/null && [ "$model_choice" -le 6 ] 2>/dev/nul
   }
 }
 EOF
-            else
-                cat > "$SETTINGS_PATH" << EOF
+        else
+            cat > "$SETTINGS_PATH" << EOF
 {
   "env": {
     "ANTHROPIC_BASE_URL": "${DEFAULT_BASE_URL}",
@@ -323,40 +306,37 @@ EOF
   }
 }
 EOF
-            fi
-            info "Claude Code 配置完成"
         fi
+        info "Claude Code 配置完成"
+    fi
 
-        # 配置 Codex
-        if [ "$install_codex" = true ]; then
-            codex_home="$HOME/.codex"
-            mkdir -p "$codex_home"
+    # 配置 Codex
+    if [ "$install_codex" = true ]; then
+        codex_home="$HOME/.codex"
+        mkdir -p "$codex_home"
 
-            cat > "$codex_home/auth.json" << EOF
+        cat > "$codex_home/auth.json" << EOF
 {
   "OPENAI_API_KEY": "${api_key}"
 }
 EOF
 
-            codex_base_url="https://2api.cloud/v1"
-            codex_config="model_provider = \"88code\"\n"
-            if [ -n "$selected_model" ]; then
-                codex_config="${codex_config}model = \"${selected_model}\"\n"
-            fi
-            codex_config="${codex_config}\n[model_providers.88code]\nname = \"88code\"\nbase_url = \"${codex_base_url}\"\nwire_api = \"responses\"\nrequires_openai_auth = true\n"
-            echo -e "$codex_config" > "$codex_home/config.toml"
-            info "Codex 配置完成"
+        codex_base_url="https://2api.cloud/v1"
+        codex_config="model_provider = \"88code\"\n"
+        if [ -n "$selected_model" ]; then
+            codex_config="${codex_config}model = \"${selected_model}\"\n"
         fi
-
-        echo ""
-        if [ -z "$selected_model" ]; then
-            info "模型: 使用服务默认"
-        else
-            info "模型: $selected_model"
-        fi
+        codex_config="${codex_config}\n[model_providers.88code]\nname = \"88code\"\nbase_url = \"${codex_base_url}\"\nwire_api = \"responses\"\nrequires_openai_auth = true\n"
+        echo -e "$codex_config" > "$codex_home/config.toml"
+        info "Codex 配置完成"
     fi
-else
-    info "跳过 API 配置，稍后可重新运行本脚本"
+
+    echo ""
+    if [ -z "$selected_model" ]; then
+        info "模型: 使用服务默认"
+    else
+        info "模型: $selected_model"
+    fi
 fi
 
 # ---------------------------------------------------------------------------

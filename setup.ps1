@@ -200,94 +200,74 @@ Write-Host ""
 Write-Host "  需要一个 API 令牌才能运行。"
 Write-Host "  获取令牌: $TOKEN_URL" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "  可用模型 (留空使用服务默认模型):"
-Write-Host "    [1] 不指定模型，使用服务默认 (推荐)"
-Write-Host "    [2] glm-5         - 旗舰模型，最强"
-Write-Host "    [3] glm-4.7       - 编程增强，日常使用"
-Write-Host "    [4] glm-4.5       - Agent 基座"
-Write-Host "    [5] glm-4.7-flash - 轻量快速"
-Write-Host "    [6] glm-4-flash   - 免费模型"
-Write-Host "    [7] 跳过，稍后手动配置"
-Write-Host ""
 
-$glmModels = @("", "glm-5", "glm-4.7", "glm-4.5", "glm-4.7-flash", "glm-4-flash")
-$modelChoice = Read-Host "  请选择模型 [1-7] (默认 1)"
-if ([string]::IsNullOrWhiteSpace($modelChoice)) { $modelChoice = "1" }
-
-if ($modelChoice -ge "1" -and $modelChoice -le "6") {
+$openBrowser = Read-Host "  是否打开浏览器获取令牌? [Y/n]"
+if ($openBrowser -ne 'n' -and $openBrowser -ne 'N') {
+    Start-Process $TOKEN_URL
+    Info "已打开浏览器，如未打开请手动访问上面的地址"
     Write-Host ""
-    $openBrowser = Read-Host "  是否打开浏览器获取令牌? [Y/n]"
-    if ($openBrowser -ne 'n' -and $openBrowser -ne 'N') {
-        Start-Process $TOKEN_URL
-        Info "已打开浏览器，如未打开请手动访问上面的地址"
-        Write-Host ""
-    }
+}
 
-    $apiKey = Read-Host "  请粘贴你的令牌"
+$apiKey = Read-Host "  请粘贴你的令牌 (输入 S 跳过)"
 
-    if ([string]::IsNullOrWhiteSpace($apiKey)) {
-        Warn "未输入令牌，跳过配置"
-        Warn "稍后可重新运行本脚本配置"
-    } else {
-        $idx = [int]$modelChoice - 1
-        $selectedModel = $glmModels[$idx]
-
-        # 配置 Claude Code
-        if ($installClaude) {
-            if (-not (Test-Path $SETTINGS_DIR)) {
-                New-Item -ItemType Directory -Path $SETTINGS_DIR -Force | Out-Null
-            }
-
-            if ([string]::IsNullOrWhiteSpace($selectedModel)) {
-                $settingsObj = [ordered]@{
-                    env = [ordered]@{
-                        ANTHROPIC_BASE_URL = $DEFAULT_BASE_URL
-                        ANTHROPIC_API_KEY  = $apiKey
-                    }
-                }
-            } else {
-                $settingsObj = [ordered]@{
-                    env = [ordered]@{
-                        ANTHROPIC_BASE_URL             = $DEFAULT_BASE_URL
-                        ANTHROPIC_API_KEY              = $apiKey
-                        ANTHROPIC_DEFAULT_OPUS_MODEL   = $selectedModel
-                        ANTHROPIC_DEFAULT_SONNET_MODEL = $selectedModel
-                        ANTHROPIC_DEFAULT_HAIKU_MODEL  = $selectedModel
-                    }
-                }
-            }
-            $settingsObj | ConvertTo-Json -Depth 5 | Out-File -FilePath $SETTINGS_PATH -Encoding UTF8 -Force
-            Info "Claude Code 配置完成"
-        }
-
-        # 配置 Codex
-        if ($installCodex) {
-            $codexHome = "$env:USERPROFILE\.codex"
-            if (-not (Test-Path $codexHome)) {
-                New-Item -ItemType Directory -Path $codexHome -Force | Out-Null
-            }
-
-            [ordered]@{ OPENAI_API_KEY = $apiKey } | ConvertTo-Json -Depth 5 | Out-File -FilePath "$codexHome\auth.json" -Encoding UTF8 -Force
-
-            $codexBaseUrl = "https://2api.cloud/v1"
-            $codexConfig = "model_provider = `"88code`"`r`n"
-            if (-not [string]::IsNullOrWhiteSpace($selectedModel)) {
-                $codexConfig += "model = `"$selectedModel`"`r`n"
-            }
-            $codexConfig += "`r`n[model_providers.88code]`r`nname = `"88code`"`r`nbase_url = `"$codexBaseUrl`"`r`nwire_api = `"responses`"`r`nrequires_openai_auth = true`r`n"
-            $codexConfig | Out-File -FilePath "$codexHome\config.toml" -Encoding UTF8 -Force
-            Info "Codex 配置完成"
-        }
-
-        Write-Host ""
-        if ([string]::IsNullOrWhiteSpace($selectedModel)) {
-            Info "模型: 使用服务默认"
-        } else {
-            Info "模型: $selectedModel"
-        }
-    }
-} else {
+if ([string]::IsNullOrWhiteSpace($apiKey) -or $apiKey -eq 'S' -or $apiKey -eq 's') {
     Info "跳过 API 配置，稍后可重新运行本脚本"
+} else {
+    $selectedModel = Read-Host "  输入模型名 (留空使用服务默认，推荐直接回车)"
+
+    # 配置 Claude Code
+    if ($installClaude) {
+        if (-not (Test-Path $SETTINGS_DIR)) {
+            New-Item -ItemType Directory -Path $SETTINGS_DIR -Force | Out-Null
+        }
+
+        if ([string]::IsNullOrWhiteSpace($selectedModel)) {
+            $settingsObj = [ordered]@{
+                env = [ordered]@{
+                    ANTHROPIC_BASE_URL = $DEFAULT_BASE_URL
+                    ANTHROPIC_API_KEY  = $apiKey
+                }
+            }
+        } else {
+            $settingsObj = [ordered]@{
+                env = [ordered]@{
+                    ANTHROPIC_BASE_URL             = $DEFAULT_BASE_URL
+                    ANTHROPIC_API_KEY              = $apiKey
+                    ANTHROPIC_DEFAULT_OPUS_MODEL   = $selectedModel
+                    ANTHROPIC_DEFAULT_SONNET_MODEL = $selectedModel
+                    ANTHROPIC_DEFAULT_HAIKU_MODEL  = $selectedModel
+                }
+            }
+        }
+        $settingsObj | ConvertTo-Json -Depth 5 | Out-File -FilePath $SETTINGS_PATH -Encoding UTF8 -Force
+        Info "Claude Code 配置完成"
+    }
+
+    # 配置 Codex
+    if ($installCodex) {
+        $codexHome = "$env:USERPROFILE\.codex"
+        if (-not (Test-Path $codexHome)) {
+            New-Item -ItemType Directory -Path $codexHome -Force | Out-Null
+        }
+
+        [ordered]@{ OPENAI_API_KEY = $apiKey } | ConvertTo-Json -Depth 5 | Out-File -FilePath "$codexHome\auth.json" -Encoding UTF8 -Force
+
+        $codexBaseUrl = "https://2api.cloud/v1"
+        $codexConfig = "model_provider = `"88code`"`r`n"
+        if (-not [string]::IsNullOrWhiteSpace($selectedModel)) {
+            $codexConfig += "model = `"$selectedModel`"`r`n"
+        }
+        $codexConfig += "`r`n[model_providers.88code]`r`nname = `"88code`"`r`nbase_url = `"$codexBaseUrl`"`r`nwire_api = `"responses`"`r`nrequires_openai_auth = true`r`n"
+        $codexConfig | Out-File -FilePath "$codexHome\config.toml" -Encoding UTF8 -Force
+        Info "Codex 配置完成"
+    }
+
+    Write-Host ""
+    if ([string]::IsNullOrWhiteSpace($selectedModel)) {
+        Info "模型: 使用服务默认"
+    } else {
+        Info "模型: $selectedModel"
+    }
 }
 
 # ---------------------------------------------------------------------------
