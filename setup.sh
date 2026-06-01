@@ -349,6 +349,23 @@ EOF
     else
         info "模型: $selected_model"
     fi
+
+    # 测试 API 连接
+    echo ""
+    echo -e "  ${CYAN}正在测试 API 连接...${NC}"
+    test_url="${DEFAULT_BASE_URL}v1/models"
+    if command_exists curl; then
+        response=$(curl -s -w "\n%{http_code}" -H "Authorization: Bearer ${api_key}" -H "Content-Type: application/json" --max-time 10 "$test_url" 2>/dev/null)
+        http_code=$(echo "$response" | tail -n1)
+        if [ "$http_code" = "200" ]; then
+            info "API 连接测试成功"
+        else
+            warn "API 连接测试失败 (HTTP $http_code)"
+            warn "请检查令牌是否正确，或稍后手动测试"
+        fi
+    else
+        warn "未找到 curl，跳过 API 连接测试"
+    fi
 fi
 
 # ---------------------------------------------------------------------------

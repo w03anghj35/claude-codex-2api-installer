@@ -293,6 +293,22 @@ if ([string]::IsNullOrWhiteSpace($apiKey) -or $apiKey -eq 'S' -or $apiKey -eq 's
     } else {
         Info "模型: $selectedModel"
     }
+
+    # 测试 API 连接
+    Write-Host ""
+    Write-Host "  正在测试 API 连接..." -ForegroundColor Cyan
+    try {
+        $headers = @{
+            "Authorization" = "Bearer $apiKey"
+            "Content-Type" = "application/json"
+        }
+        $testUrl = "${DEFAULT_BASE_URL}v1/models"
+        $response = Invoke-RestMethod -Uri $testUrl -Headers $headers -Method Get -TimeoutSec 10 -ErrorAction Stop
+        Info "API 连接测试成功"
+    } catch {
+        Warn "API 连接测试失败: $($_.Exception.Message)"
+        Warn "请检查令牌是否正确，或稍后手动测试"
+    }
 }
 
 # ---------------------------------------------------------------------------
