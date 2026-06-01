@@ -241,15 +241,31 @@ if [ "$install_claude" = true ]; then
 fi
 
 if [ "$install_codex" = true ]; then
+    # 先安装 Codex CLI
     if command_exists codex; then
-        info "Codex 桌面端已安装"
+        info "Codex CLI $(codex --version 2>/dev/null) 已安装"
+    elif command_exists npm; then
+        info "正在安装 Codex CLI (使用国内镜像，请稍候)..."
+        npm install -g @openai/codex 2>&1 | tail -5
+        export PATH="$(npm prefix -g)/bin:$PATH"
+        if command_exists codex; then
+            info "Codex CLI 安装成功"
+        else
+            warn "安装完成，但需要重启终端才能使用 codex 命令"
+        fi
     else
+        err "npm 不可用，无法安装 Codex CLI"
+    fi
+
+    # 询问是否安装桌面版
+    echo ""
+    read -rp "  是否安装 Codex 桌面版? [y/N]: " install_desktop
+    if [ "$install_desktop" = "y" ] || [ "$install_desktop" = "Y" ]; then
         echo ""
-        echo -e "  ${YELLOW}Codex 桌面端需要手动下载安装。${NC}"
-        echo -e "  ${YELLOW}正在打开下载页面...${NC}"
+        echo -e "  ${CYAN}正在打开 Codex 桌面版下载页面...${NC}"
         open_url "https://openai.com/codex/"
         echo ""
-        read -rp "  请下载安装 Codex 桌面端，安装完成后按 Enter 继续"
+        read -rp "  请下载安装 Codex 桌面版，安装完成后按 Enter 继续"
     fi
 fi
 

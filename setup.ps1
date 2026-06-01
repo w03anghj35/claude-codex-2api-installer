@@ -180,15 +180,28 @@ if ($installClaude) {
 }
 
 if ($installCodex) {
+    # 先安装 Codex CLI
     if (Test-Cmd "codex") {
-        Info "Codex 桌面端已安装"
+        Info "Codex CLI $(& codex --version 2>$null) 已安装"
+    } elseif (Test-Cmd "npm") {
+        Info "正在安装 Codex CLI (使用国内镜像，请稍候)..."
+        & npm install -g @openai/codex 2>&1 | Select-Object -Last 5 | ForEach-Object { Write-Host "  $_" -ForegroundColor Gray }
+        Refresh-Path
+        if (Test-Cmd "codex") { Info "Codex CLI 安装成功" }
+        else { Warn "安装完成，但需要重启终端才能使用 codex 命令" }
     } else {
+        Err "npm 不可用，无法安装 Codex CLI"
+    }
+
+    # 询问是否安装桌面版
+    Write-Host ""
+    $installDesktop = Read-Host "  是否安装 Codex 桌面版? [y/N]"
+    if ($installDesktop -eq 'y' -or $installDesktop -eq 'Y') {
         Write-Host ""
-        Write-Host "  Codex 桌面端需要手动下载安装。" -ForegroundColor Yellow
-        Write-Host "  正在打开下载页面..." -ForegroundColor Yellow
+        Write-Host "  正在打开 Codex 桌面版下载页面..." -ForegroundColor Cyan
         Start-Process "https://openai.com/codex/"
         Write-Host ""
-        Read-Host "  请下载安装 Codex 桌面端，安装完成后按 Enter 继续"
+        Read-Host "  请下载安装 Codex 桌面版，安装完成后按 Enter 继续"
     }
 }
 
