@@ -244,21 +244,23 @@ if ([string]::IsNullOrWhiteSpace($apiKey) -or $apiKey -eq 'S' -or $apiKey -eq 's
             New-Item -ItemType Directory -Path $SETTINGS_DIR -Force | Out-Null
         }
 
+        $baseUrlNoSlash = $DEFAULT_BASE_URL.TrimEnd('/')
         if ([string]::IsNullOrWhiteSpace($selectedModel)) {
             $settingsObj = [ordered]@{
                 env = [ordered]@{
-                    ANTHROPIC_BASE_URL = $DEFAULT_BASE_URL
-                    ANTHROPIC_API_KEY  = $apiKey
+                    ANTHROPIC_AUTH_TOKEN = $apiKey
+                    ANTHROPIC_BASE_URL   = $baseUrlNoSlash
                 }
             }
         } else {
             $settingsObj = [ordered]@{
                 env = [ordered]@{
-                    ANTHROPIC_BASE_URL             = $DEFAULT_BASE_URL
-                    ANTHROPIC_API_KEY              = $apiKey
+                    ANTHROPIC_AUTH_TOKEN           = $apiKey
+                    ANTHROPIC_BASE_URL             = $baseUrlNoSlash
                     ANTHROPIC_DEFAULT_OPUS_MODEL   = $selectedModel
                     ANTHROPIC_DEFAULT_SONNET_MODEL = $selectedModel
                     ANTHROPIC_DEFAULT_HAIKU_MODEL  = $selectedModel
+                    ANTHROPIC_MODEL                = $selectedModel
                 }
             }
         }
