@@ -275,17 +275,28 @@ if ([string]::IsNullOrWhiteSpace($apiKey) -or $apiKey -eq 'S' -or $apiKey -eq 's
         }
 
         $baseUrlNoSlash = $DEFAULT_BASE_URL.TrimEnd('/')
+
+        # 清理可能冲突的环境变量（系统级和用户级的 ANTHROPIC_API_KEY 会与 settings.json 中的 AUTH_TOKEN 冲突）
+        try {
+            [System.Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", $null, "User")
+            [System.Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", $null, "Machine")
+            $env:ANTHROPIC_API_KEY = $null
+            Info "已清理冲突的 ANTHROPIC_API_KEY 环境变量"
+        } catch {
+            Warn "清理环境变量失败: $_"
+        }
+
         if ([string]::IsNullOrWhiteSpace($selectedModel)) {
             $settingsObj = [ordered]@{
                 env = [ordered]@{
-                    ANTHROPIC_API_KEY  = $apiKey
-                    ANTHROPIC_BASE_URL = $baseUrlNoSlash
+                    ANTHROPIC_AUTH_TOKEN = $apiKey
+                    ANTHROPIC_BASE_URL   = $baseUrlNoSlash
                 }
             }
         } else {
             $settingsObj = [ordered]@{
                 env = [ordered]@{
-                    ANTHROPIC_API_KEY              = $apiKey
+                    ANTHROPIC_AUTH_TOKEN           = $apiKey
                     ANTHROPIC_BASE_URL             = $baseUrlNoSlash
                     ANTHROPIC_DEFAULT_OPUS_MODEL   = $selectedModel
                     ANTHROPIC_DEFAULT_SONNET_MODEL = $selectedModel
@@ -421,7 +432,7 @@ if ($installClaude) {
 if ($installCodex) {
     if (Test-Cmd "codex") { Info "Codex 已就绪" } else { Warn "Codex 需重启终端" }
 }
-if ((Test-Path $SETTINGS_PATH) -and (Select-String -Path $SETTINGS_PATH -Pattern "ANTHROPIC_API_KEY" -Quiet)) {
+if ((Test-Path $SETTINGS_PATH) -and (Select-String -Path $SETTINGS_PATH -Pattern "ANTHROPIC_AUTH_TOKEN" -Quiet)) {
     Info "API 令牌已配置"
 } elseif ((Test-Path "$env:USERPROFILE\.codex\auth.json")) {
     Info "API 令牌已配置"
