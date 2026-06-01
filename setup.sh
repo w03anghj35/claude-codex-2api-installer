@@ -353,19 +353,82 @@ EOF
     # 测试 API 连接
     echo ""
     echo -e "  ${CYAN}正在测试 API 连接...${NC}"
-    test_url="${DEFAULT_BASE_URL}v1/models"
-    if command_exists curl; then
-        response=$(curl -s -w "\n%{http_code}" -H "Authorization: Bearer ${api_key}" -H "Content-Type: application/json" --max-time 10 "$test_url" 2>/dev/null)
-        http_code=$(echo "$response" | tail -n1)
-        if [ "$http_code" = "200" ]; then
-            info "API 连接测试成功"
+    test_success=false
+    max_retries=3
+    retry_count=0
+
+    while [ "$test_success" = false ] && [ $retry_count -lt $max_retries ]; do
+        test_url="${DEFAULT_BASE_URL}v1/models"
+        if command_exists curl; then
+            response=$(curl -s -w "\n%{http_code}" -H "Authorization: Bearer ${api_key}" -H "Content-Type: application/json" --max-time 10 "$test_url" 2>/dev/null)
+            http_code=$(echo "$response" | tail -n1)
+
+            if [ "$http_code" = "200" ]; then
+                info "API 连接测试成功"
+                test_success=true
+            else
+                retry_count=$((retry_count + 1))
+                warn "API 连接测试失败 (尝试 $retry_count/$max_retries): HTTP $http_code"
+
+                if [ $retry_count -lt $max_retries ]; then
+                    echo ""
+                    echo -e "  ${YELLOW}可能的原因:${NC}"
+                    echo -e "    ${GRAY}1. 令牌错误或已过期${NC}"
+                    echo -e "    ${GRAY}2. 网络连接问题${NC}"
+                    echo -e "    ${GRAY}3. API 服务暂时不可用${NC}"
+                    echo ""
+
+                    read -rp "  [1] 打开配置文件手动修改  [2] 重新测试  [3] 跳过 (默认 1): " action
+                    action=${action:-1}
+
+                    if [ "$action" = "1" ]; then
+                        if [ "$install_claude" = true ] && [ -f "$SETTINGS_PATH" ]; then
+                            echo -e "  ${CYAN}正在打开 Claude Code 配置文件...${NC}"
+                            if command_exists code; then
+                                code "$SETTINGS_PATH"
+                            elif command_exists nano; then
+                                nano "$SETTINGS_PATH"
+                            elif command_exists vi; then
+                                vi "$SETTINGS_PATH"
+                            else
+                                echo -e "  ${YELLOW}请手动编辑: $SETTINGS_PATH${NC}"
+                            fi
+                        fi
+                        if [ "$install_codex" = true ] && [ -f "$HOME/.codex/auth.json" ]; then
+                            echo -e "  ${CYAN}正在打开 Codex 配置文件...${NC}"
+                            if command_exists code; then
+                                code "$HOME/.codex/auth.json"
+                            elif command_exists nano; then
+                                nano "$HOME/.codex/auth.json"
+                            elif command_exists vi; then
+                                vi "$HOME/.codex/auth.json"
+                            else
+                                echo -e "  ${YELLOW}请手动编辑: $HOME/.codex/auth.json${NC}"
+                            fi
+                        fi
+                        echo ""
+                        read -rp "  修改完成后按 Enter 重新测试"
+
+                        # 重新读取配置
+                        if [ "$install_claude" = true ] && [ -f "$SETTINGS_PATH" ]; then
+                            new_key=$(grep -oP '"ANTHROPIC_API_KEY":\s*"\K[^"]+' "$SETTINGS_PATH" 2>/dev/null)
+                            if [ -n "$new_key" ]; then
+                                api_key="$new_key"
+                            fi
+                        fi
+                    elif [ "$action" = "3" ]; then
+                        warn "跳过 API 测试，请稍后手动验证"
+                        break
+                    fi
+                else
+                    warn "已达到最大重试次数，请稍后手动验证配置"
+                fi
+            fi
         else
-            warn "API 连接测试失败 (HTTP $http_code)"
-            warn "请检查令牌是否正确，或稍后手动测试"
+            warn "未找到 curl，跳过 API 连接测试"
+            break
         fi
-    else
-        warn "未找到 curl，跳过 API 连接测试"
-    fi
+    done
 fi
 
 # ---------------------------------------------------------------------------

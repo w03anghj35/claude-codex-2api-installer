@@ -297,17 +297,66 @@ if ([string]::IsNullOrWhiteSpace($apiKey) -or $apiKey -eq 'S' -or $apiKey -eq 's
     # 测试 API 连接
     Write-Host ""
     Write-Host "  正在测试 API 连接..." -ForegroundColor Cyan
-    try {
-        $headers = @{
-            "Authorization" = "Bearer $apiKey"
-            "Content-Type" = "application/json"
+    $testSuccess = $false
+    $maxRetries = 3
+    $retryCount = 0
+
+    while (-not $testSuccess -and $retryCount -lt $maxRetries) {
+        try {
+            $headers = @{
+                "Authorization" = "Bearer $apiKey"
+                "Content-Type" = "application/json"
+            }
+            $testUrl = "${DEFAULT_BASE_URL}v1/models"
+            $response = Invoke-RestMethod -Uri $testUrl -Headers $headers -Method Get -TimeoutSec 10 -ErrorAction Stop
+            Info "API 连接测试成功"
+            $testSuccess = $true
+        } catch {
+            $retryCount++
+            Warn "API 连接测试失败 (尝试 $retryCount/$maxRetries): $($_.Exception.Message)"
+
+            if ($retryCount -lt $maxRetries) {
+                Write-Host ""
+                Write-Host "  可能的原因:" -ForegroundColor Yellow
+                Write-Host "    1. 令牌错误或已过期" -ForegroundColor Gray
+                Write-Host "    2. 网络连接问题" -ForegroundColor Gray
+                Write-Host "    3. API 服务暂时不可用" -ForegroundColor Gray
+                Write-Host ""
+
+                $action = Read-Host "  [1] 打开配置文件手动修改  [2] 重新测试  [3] 跳过 (默认 1)"
+                if ([string]::IsNullOrWhiteSpace($action)) { $action = "1" }
+
+                if ($action -eq "1") {
+                    if ($installClaude) {
+                        Write-Host "  正在打开 Claude Code 配置文件..." -ForegroundColor Cyan
+                        Start-Process notepad $SETTINGS_PATH
+                    }
+                    if ($installCodex) {
+                        Write-Host "  正在打开 Codex 配置文件..." -ForegroundColor Cyan
+                        Start-Process notepad "$codexHome\auth.json"
+                    }
+                    Write-Host ""
+                    Read-Host "  修改完成后按 Enter 重新测试"
+
+                    # 重新读取配置
+                    if ($installClaude -and (Test-Path $SETTINGS_PATH)) {
+                        try {
+                            $settings = Get-Content $SETTINGS_PATH -Raw | ConvertFrom-Json
+                            if ($settings.env.ANTHROPIC_API_KEY) {
+                                $apiKey = $settings.env.ANTHROPIC_API_KEY
+                            }
+                        } catch {
+                            Warn "配置文件格式错误，请检查 JSON 格式"
+                        }
+                    }
+                } elseif ($action -eq "3") {
+                    Warn "跳过 API 测试，请稍后手动验证"
+                    break
+                }
+            } else {
+                Warn "已达到最大重试次数，请稍后手动验证配置"
+            }
         }
-        $testUrl = "${DEFAULT_BASE_URL}v1/models"
-        $response = Invoke-RestMethod -Uri $testUrl -Headers $headers -Method Get -TimeoutSec 10 -ErrorAction Stop
-        Info "API 连接测试成功"
-    } catch {
-        Warn "API 连接测试失败: $($_.Exception.Message)"
-        Warn "请检查令牌是否正确，或稍后手动测试"
     }
 }
 
