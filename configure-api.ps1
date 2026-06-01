@@ -75,7 +75,7 @@ function Save-ClaudeSettings {
         New-Item -ItemType Directory -Path $configDir -Force | Out-Null
     }
 
-    $Settings | ConvertTo-Json -Depth 10 | Out-File -FilePath $SETTINGS_PATH -Encoding UTF8 -Force
+    $Settings | ConvertTo-Json -Depth 10 | Out-File -FilePath $SETTINGS_PATH -Encoding utf8NoBOM -Force
 }
 
 function Mask-Secret {

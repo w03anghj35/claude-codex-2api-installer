@@ -253,7 +253,7 @@ if ([string]::IsNullOrWhiteSpace($apiKey) -or $apiKey -eq 'S' -or $apiKey -eq 's
                 }
             }
         }
-        $settingsObj | ConvertTo-Json -Depth 5 | Out-File -FilePath $SETTINGS_PATH -Encoding UTF8 -Force
+        $settingsObj | ConvertTo-Json -Depth 5 | Out-File -FilePath $SETTINGS_PATH -Encoding utf8NoBOM -Force
         Info "Claude Code 配置完成"
     }
 
@@ -264,7 +264,7 @@ if ([string]::IsNullOrWhiteSpace($apiKey) -or $apiKey -eq 'S' -or $apiKey -eq 's
             New-Item -ItemType Directory -Path $codexHome -Force | Out-Null
         }
 
-        [ordered]@{ OPENAI_API_KEY = $apiKey } | ConvertTo-Json -Depth 5 | Out-File -FilePath "$codexHome\auth.json" -Encoding UTF8 -Force
+        [ordered]@{ OPENAI_API_KEY = $apiKey } | ConvertTo-Json -Depth 5 | Out-File -FilePath "$codexHome\auth.json" -Encoding utf8NoBOM -Force
 
         $codexBaseUrl = "https://2api.cloud/v1"
         $codexConfig = "model_provider = `"88code`"`r`n"
