@@ -83,11 +83,6 @@ function Save-ClaudeConfig {
     if (-not (Test-Path $SETTINGS_DIR)) {
         New-Item -ItemType Directory -Path $SETTINGS_DIR -Force | Out-Null
     }
-    # 清理冲突的环境变量（仅用户级，避免需要管理员权限）
-    try {
-        [System.Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", $null, "User")
-        $env:ANTHROPIC_API_KEY = $null
-    } catch {}
 
     if ([string]::IsNullOrWhiteSpace($Model)) {
         $obj = [ordered]@{
