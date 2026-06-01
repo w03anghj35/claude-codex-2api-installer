@@ -83,31 +83,59 @@ Write-Host "  +--------------------------------------------------------+" -Foreg
 Write-Host "  |   Claude Code / Codex 一键安装 (Windows 中国版)        |" -ForegroundColor Magenta
 Write-Host "  +--------------------------------------------------------+" -ForegroundColor Magenta
 Write-Host ""
-Write-Host "  本脚本将自动完成:"
-Write-Host "    1. 安装 Node.js (国内镜像)"
-Write-Host "    2. 安装 Git (国内镜像)"
-Write-Host "    3. 配置 npm 国内镜像源"
-Write-Host "    4. 安装 Claude Code / Codex"
-Write-Host "    5. 配置 API 令牌"
-Write-Host ""
-Write-Host "  请选择要安装的工具:" -ForegroundColor White
-Write-Host "    [1] Claude Code (推荐)"
-Write-Host "    [2] Codex"
-Write-Host "    [3] 两个都装"
+Write-Host "  请选择模式:" -ForegroundColor White
+Write-Host "    [1] 完整安装 (Node.js + Git + Claude Code + 配置 API)"
+Write-Host "    [2] 仅配置 / 更换 API 令牌"
+Write-Host "    [Q] 退出"
 Write-Host ""
 
-$toolChoice = Read-Host "  请选择 [1-3] (默认 1)"
-if ([string]::IsNullOrWhiteSpace($toolChoice)) { $toolChoice = "1" }
+$modeChoice = Read-Host "  请选择 [1/2/Q] (默认 1)"
+if ([string]::IsNullOrWhiteSpace($modeChoice)) { $modeChoice = "1" }
+if ($modeChoice -eq 'Q' -or $modeChoice -eq 'q') {
+    Write-Host "  已取消。" -ForegroundColor Yellow
+    exit 0
+}
+
+$apiOnlyMode = ($modeChoice -eq "2")
+
+if (-not $apiOnlyMode) {
+    Write-Host ""
+    Write-Host "  本脚本将自动完成:"
+    Write-Host "    1. 安装 Node.js (国内镜像)"
+    Write-Host "    2. 安装 Git (国内镜像)"
+    Write-Host "    3. 配置 npm 国内镜像源"
+    Write-Host "    4. 安装 Claude Code / Codex"
+    Write-Host "    5. 配置 API 令牌"
+    Write-Host ""
+    Write-Host "  请选择要安装的工具:" -ForegroundColor White
+    Write-Host "    [1] Claude Code (推荐)"
+    Write-Host "    [2] Codex"
+    Write-Host "    [3] 两个都装"
+    Write-Host ""
+
+    $toolChoice = Read-Host "  请选择 [1-3] (默认 1)"
+    if ([string]::IsNullOrWhiteSpace($toolChoice)) { $toolChoice = "1" }
+} else {
+    # 仅配置 API 模式，默认 Claude Code
+    $toolChoice = "1"
+}
 
 $installClaude = ($toolChoice -eq "1" -or $toolChoice -eq "3")
 $installCodex  = ($toolChoice -eq "2" -or $toolChoice -eq "3")
 
-Write-Host ""
-$confirm = Read-Host "  按 Enter 开始安装，输入 Q 退出"
-if ($confirm -eq 'Q' -or $confirm -eq 'q') {
-    Write-Host "  已取消。" -ForegroundColor Yellow
-    exit 0
+if (-not $apiOnlyMode) {
+    Write-Host ""
+    $confirm = Read-Host "  按 Enter 开始安装，输入 Q 退出"
+    if ($confirm -eq 'Q' -or $confirm -eq 'q') {
+        Write-Host "  已取消。" -ForegroundColor Yellow
+        exit 0
+    }
 }
+
+# ---------------------------------------------------------------------------
+# 步骤 1-4: 安装环境 (仅配置 API 模式跳过)
+# ---------------------------------------------------------------------------
+if (-not $apiOnlyMode) {
 
 # ---------------------------------------------------------------------------
 # 步骤 1: Node.js
@@ -214,10 +242,12 @@ if ($installCodex) {
     }
 }
 
+} # end if (-not $apiOnlyMode)
+
 # ---------------------------------------------------------------------------
 # 步骤 5: 配置 API
 # ---------------------------------------------------------------------------
-Step "步骤 5/5: 配置 API 令牌"
+Step "配置 API 令牌"
 
 Write-Host ""
 Write-Host "  需要一个 API 令牌才能运行。"
