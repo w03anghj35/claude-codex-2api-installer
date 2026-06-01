@@ -249,6 +249,7 @@ if ([string]::IsNullOrWhiteSpace($apiKey) -or $apiKey -eq 'S' -or $apiKey -eq 's
             $settingsObj = [ordered]@{
                 env = [ordered]@{
                     ANTHROPIC_AUTH_TOKEN = $apiKey
+                    ANTHROPIC_API_KEY    = $apiKey
                     ANTHROPIC_BASE_URL   = $baseUrlNoSlash
                 }
             }
@@ -256,6 +257,7 @@ if ([string]::IsNullOrWhiteSpace($apiKey) -or $apiKey -eq 'S' -or $apiKey -eq 's
             $settingsObj = [ordered]@{
                 env = [ordered]@{
                     ANTHROPIC_AUTH_TOKEN           = $apiKey
+                    ANTHROPIC_API_KEY              = $apiKey
                     ANTHROPIC_BASE_URL             = $baseUrlNoSlash
                     ANTHROPIC_DEFAULT_OPUS_MODEL   = $selectedModel
                     ANTHROPIC_DEFAULT_SONNET_MODEL = $selectedModel
