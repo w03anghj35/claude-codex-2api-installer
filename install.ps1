@@ -29,6 +29,15 @@ $INSTALL_LOG      = "$env:TEMP\claude-code-install.log"
 # ---------------------------------------------------------------------------
 # 辅助函数
 # ---------------------------------------------------------------------------
+function Remove-BOM {
+    param([string]$FilePath)
+    if (Test-Path $FilePath) {
+        $content = Get-Content -Path $FilePath -Raw
+        $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+        [System.IO.File]::WriteAllText($FilePath, $content, $utf8NoBom)
+    }
+}
+
 function Write-Step {
     param([string]$Message)
     Write-Host ""
@@ -338,6 +347,7 @@ if ($providerChoice -ge "1" -and $providerChoice -le "6") {
             }
         }
         $settingsObj | ConvertTo-Json -Depth 5 | Out-File -FilePath "$claudeConfigDir\settings.json" -Encoding utf8NoBOM -Force
+        Remove-BOM "$claudeConfigDir\settings.json"
 
         Write-Info "配置完成:"
         Write-Host "    ANTHROPIC_BASE_URL = $glmBaseUrl" -ForegroundColor Gray

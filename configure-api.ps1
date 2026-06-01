@@ -18,6 +18,15 @@ $GLM_MODELS = @(
     @{ Name = "glm-4.5-air";   Desc = "轻量快速，低成本" }
 )
 
+function Remove-BOM {
+    param([string]$FilePath)
+    if (Test-Path $FilePath) {
+        $content = Get-Content -Path $FilePath -Raw
+        $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+        [System.IO.File]::WriteAllText($FilePath, $content, $utf8NoBom)
+    }
+}
+
 function Get-ClaudeSettings {
     if (Test-Path $SETTINGS_PATH) {
         try {
@@ -76,6 +85,7 @@ function Save-ClaudeSettings {
     }
 
     $Settings | ConvertTo-Json -Depth 10 | Out-File -FilePath $SETTINGS_PATH -Encoding utf8NoBOM -Force
+    Remove-BOM $SETTINGS_PATH
 }
 
 function Mask-Secret {

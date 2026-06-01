@@ -31,6 +31,15 @@ $CODEX_CONFIG_PATH = Join-Path $CODEX_HOME "config.toml"
 $CODEX_AUTH_PATH = Join-Path $CODEX_HOME "auth.json"
 $MODELS = @("glm-5", "glm-4.7", "glm-4.5", "glm-4.7-flash", "glm-4-flash", "glm-4.5-air")
 
+function Remove-BOM {
+    param([string]$FilePath)
+    if (Test-Path $FilePath) {
+        $content = Get-Content -Path $FilePath -Raw
+        $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+        [System.IO.File]::WriteAllText($FilePath, $content, $utf8NoBom)
+    }
+}
+
 function Get-ClaudeSettings {
     if (Test-Path $SETTINGS_PATH) {
         try {
@@ -120,6 +129,7 @@ function Save-ApiConfig {
     }
 
     $settings | ConvertTo-Json -Depth 10 | Out-File -FilePath $SETTINGS_PATH -Encoding utf8NoBOM -Force
+    Remove-BOM $SETTINGS_PATH
 }
 
 function Save-CodexConfig {
@@ -136,6 +146,7 @@ function Save-CodexConfig {
     [ordered]@{
         OPENAI_API_KEY = $ApiKey
     } | ConvertTo-Json -Depth 5 | Out-File -FilePath $CODEX_AUTH_PATH -Encoding utf8NoBOM -Force
+    Remove-BOM $CODEX_AUTH_PATH
 
     $existing = ""
     if (Test-Path $CODEX_CONFIG_PATH) {

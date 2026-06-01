@@ -38,6 +38,15 @@ function Warn  { param([string]$M) Write-Host "  [!]  $M" -ForegroundColor Yello
 function Err   { param([string]$M) Write-Host "  [X]  $M" -ForegroundColor Red }
 function Step  { param([string]$M) Write-Host ""; Write-Host "  > $M" -ForegroundColor Cyan; Write-Host "" }
 
+function Remove-BOM {
+    param([string]$FilePath)
+    if (Test-Path $FilePath) {
+        $content = Get-Content -Path $FilePath -Raw
+        $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+        [System.IO.File]::WriteAllText($FilePath, $content, $utf8NoBom)
+    }
+}
+
 function Refresh-Path {
     $machinePath = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
     $userPath    = [System.Environment]::GetEnvironmentVariable("Path", "User")
@@ -254,6 +263,7 @@ if ([string]::IsNullOrWhiteSpace($apiKey) -or $apiKey -eq 'S' -or $apiKey -eq 's
             }
         }
         $settingsObj | ConvertTo-Json -Depth 5 | Out-File -FilePath $SETTINGS_PATH -Encoding utf8NoBOM -Force
+        Remove-BOM $SETTINGS_PATH
         Info "Claude Code 配置完成"
     }
 
@@ -265,6 +275,7 @@ if ([string]::IsNullOrWhiteSpace($apiKey) -or $apiKey -eq 'S' -or $apiKey -eq 's
         }
 
         [ordered]@{ OPENAI_API_KEY = $apiKey } | ConvertTo-Json -Depth 5 | Out-File -FilePath "$codexHome\auth.json" -Encoding utf8NoBOM -Force
+        Remove-BOM "$codexHome\auth.json"
 
         $codexBaseUrl = "https://2api.cloud/v1"
         $codexConfig = "model_provider = `"88code`"`r`n"
@@ -272,7 +283,7 @@ if ([string]::IsNullOrWhiteSpace($apiKey) -or $apiKey -eq 'S' -or $apiKey -eq 's
             $codexConfig += "model = `"$selectedModel`"`r`n"
         }
         $codexConfig += "`r`n[model_providers.88code]`r`nname = `"88code`"`r`nbase_url = `"$codexBaseUrl`"`r`nwire_api = `"responses`"`r`nrequires_openai_auth = true`r`n"
-        $codexConfig | Out-File -FilePath "$codexHome\config.toml" -Encoding UTF8 -Force
+        $codexConfig | Out-File -FilePath "$codexHome\config.toml" -Encoding utf8NoBOM -Force
         Info "Codex 配置完成"
     }
 
