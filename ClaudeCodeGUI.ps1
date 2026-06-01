@@ -1,19 +1,21 @@
-﻿# ============================================================================
-# Claude Code 图形启动器
+# ============================================================================
+# Claude Code / Codex 图形安装配置助手
+# 流程与 setup.ps1 一致
 # ============================================================================
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
+Set-ExecutionPolicy Bypass -Scope Process -Force
+
 function Test-IsAdmin {
-    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $identity  = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
 if (-not (Test-IsAdmin)) {
-    $scriptPath = $PSCommandPath
-    Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`"" -Verb RunAs
+    Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
     exit
 }
 
@@ -21,16 +23,23 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
-$TOKEN_URL = "https://2api.cloud/console/token"
-$DEFAULT_BASE_URL = "https://2api.cloud/"
-$CODEX_DEFAULT_BASE_URL = "https://2api.cloud/v1"
-$CODEX_PROVIDER_NAME = "88code"
-$SETTINGS_PATH = Join-Path $env:USERPROFILE ".claude\settings.json"
-$CODEX_HOME = Join-Path $env:USERPROFILE ".codex"
-$CODEX_CONFIG_PATH = Join-Path $CODEX_HOME "config.toml"
-$CODEX_AUTH_PATH = Join-Path $CODEX_HOME "auth.json"
-$MODELS = @("glm-5", "glm-4.7", "glm-4.5", "glm-4.7-flash", "glm-4-flash", "glm-4.5-air")
+# ---------------------------------------------------------------------------
+# 全局配置
+# ---------------------------------------------------------------------------
+$NODEJS_VERSION   = "22.13.1"
+$NODEJS_URL       = "https://npmmirror.com/mirrors/node/v${NODEJS_VERSION}/node-v${NODEJS_VERSION}-x64.msi"
+$GIT_VERSION      = "2.47.1"
+$GIT_URL          = "https://registry.npmmirror.com/-/binary/git-for-windows/v${GIT_VERSION}.windows.1/Git-${GIT_VERSION}-64-bit.exe"
+$NPM_MIRROR       = "https://registry.npmmirror.com"
+$SETTINGS_DIR     = "$env:USERPROFILE\.claude"
+$SETTINGS_PATH    = "$SETTINGS_DIR\settings.json"
+$DEFAULT_BASE_URL = "https://2api.cloud"
+$TOKEN_URL        = "https://2api.cloud/console/token"
+$CODEX_HOME       = "$env:USERPROFILE\.codex"
 
+# ---------------------------------------------------------------------------
+# 辅助函数
+# ---------------------------------------------------------------------------
 function Remove-BOM {
     param([string]$FilePath)
     if (Test-Path $FilePath) {
@@ -40,674 +49,492 @@ function Remove-BOM {
     }
 }
 
-function Get-ClaudeSettings {
-    if (Test-Path $SETTINGS_PATH) {
+function Refresh-Path {
+    $machinePath = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
+    $userPath    = [System.Environment]::GetEnvironmentVariable("Path", "User")
+    $env:Path    = "$machinePath;$userPath"
+}
+
+function Test-Cmd { param([string]$C) $null -ne (Get-Command $C -ErrorAction SilentlyContinue) }
+
+function Download-File {
+    param([string]$Url, [string]$OutFile, [string]$Desc, [System.Windows.Forms.TextBox]$Log)
+    Add-Log $Log "正在下载 $Desc ..."
+    try {
+        $ProgressPreference = 'SilentlyContinue'
+        Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing -TimeoutSec 300
+        $ProgressPreference = 'Continue'
+        return $true
+    } catch {
         try {
-            return Get-Content -Path $SETTINGS_PATH -Raw -Encoding UTF8 | ConvertFrom-Json
+            (New-Object System.Net.WebClient).DownloadFile($Url, $OutFile)
+            return $true
+        } catch {
+            Add-Log $Log "[错误] $Desc 下载失败: $_"
+            return $false
         }
-        catch {
-            return [pscustomobject]@{}
+    }
+}
+
+function Add-Log {
+    param([System.Windows.Forms.TextBox]$Box, [string]$Msg)
+    $time = Get-Date -Format "HH:mm:ss"
+    $Box.AppendText("[$time] $Msg`r`n")
+    $Box.ScrollToCaret()
+    [System.Windows.Forms.Application]::DoEvents()
+}
+
+function Save-ClaudeConfig {
+    param([string]$ApiKey, [string]$Model)
+    if (-not (Test-Path $SETTINGS_DIR)) {
+        New-Item -ItemType Directory -Path $SETTINGS_DIR -Force | Out-Null
+    }
+    # 清理冲突的环境变量
+    try {
+        [System.Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", $null, "User")
+        [System.Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", $null, "Machine")
+        $env:ANTHROPIC_API_KEY = $null
+    } catch {}
+
+    if ([string]::IsNullOrWhiteSpace($Model)) {
+        $obj = [ordered]@{
+            env = [ordered]@{
+                ANTHROPIC_AUTH_TOKEN = $ApiKey
+                ANTHROPIC_BASE_URL   = $DEFAULT_BASE_URL
+            }
+        }
+    } else {
+        $obj = [ordered]@{
+            env = [ordered]@{
+                ANTHROPIC_AUTH_TOKEN           = $ApiKey
+                ANTHROPIC_BASE_URL             = $DEFAULT_BASE_URL
+                ANTHROPIC_DEFAULT_OPUS_MODEL   = $Model
+                ANTHROPIC_DEFAULT_SONNET_MODEL = $Model
+                ANTHROPIC_DEFAULT_HAIKU_MODEL  = $Model
+                ANTHROPIC_MODEL                = $Model
+            }
         }
     }
-
-    return [pscustomobject]@{}
-}
-
-function Ensure-EnvObject {
-    param([Parameter(Mandatory = $true)]$Settings)
-
-    if (-not $Settings.PSObject.Properties["env"] -or $null -eq $Settings.env) {
-        $Settings | Add-Member -MemberType NoteProperty -Name "env" -Value ([pscustomobject]@{}) -Force
-    }
-
-    return $Settings.env
-}
-
-function Set-ObjectProperty {
-    param(
-        [Parameter(Mandatory = $true)]$Object,
-        [Parameter(Mandatory = $true)][string]$Name,
-        [AllowEmptyString()][string]$Value
-    )
-
-    if ($Object.PSObject.Properties[$Name]) {
-        $Object.$Name = $Value
-    }
-    else {
-        $Object | Add-Member -MemberType NoteProperty -Name $Name -Value $Value
-    }
-}
-
-function Remove-ObjectProperty {
-    param(
-        [Parameter(Mandatory = $true)]$Object,
-        [Parameter(Mandatory = $true)][string]$Name
-    )
-
-    if ($Object.PSObject.Properties[$Name]) {
-        $Object.PSObject.Properties.Remove($Name)
-    }
-}
-
-function Save-ApiConfig {
-    param(
-        [Parameter(Mandatory = $true)][string]$ApiKey,
-        [Parameter(Mandatory = $true)][string]$BaseUrl,
-        [AllowEmptyString()][string]$OpusModel,
-        [AllowEmptyString()][string]$SonnetModel,
-        [AllowEmptyString()][string]$HaikuModel
-    )
-
-    $settings = Get-ClaudeSettings
-    $envConfig = Ensure-EnvObject -Settings $settings
-
-    Set-ObjectProperty -Object $envConfig -Name "ANTHROPIC_BASE_URL" -Value $BaseUrl
-    Set-ObjectProperty -Object $envConfig -Name "ANTHROPIC_API_KEY" -Value $ApiKey
-    Remove-ObjectProperty -Object $envConfig -Name "ANTHROPIC_AUTH_TOKEN"
-
-    if ([string]::IsNullOrWhiteSpace($OpusModel)) {
-        Remove-ObjectProperty -Object $envConfig -Name "ANTHROPIC_DEFAULT_OPUS_MODEL"
-    } else {
-        Set-ObjectProperty -Object $envConfig -Name "ANTHROPIC_DEFAULT_OPUS_MODEL" -Value $OpusModel
-    }
-
-    if ([string]::IsNullOrWhiteSpace($SonnetModel)) {
-        Remove-ObjectProperty -Object $envConfig -Name "ANTHROPIC_DEFAULT_SONNET_MODEL"
-    } else {
-        Set-ObjectProperty -Object $envConfig -Name "ANTHROPIC_DEFAULT_SONNET_MODEL" -Value $SonnetModel
-    }
-
-    if ([string]::IsNullOrWhiteSpace($HaikuModel)) {
-        Remove-ObjectProperty -Object $envConfig -Name "ANTHROPIC_DEFAULT_HAIKU_MODEL"
-    } else {
-        Set-ObjectProperty -Object $envConfig -Name "ANTHROPIC_DEFAULT_HAIKU_MODEL" -Value $HaikuModel
-    }
-
-    $configDir = Split-Path -Parent $SETTINGS_PATH
-    if (-not (Test-Path $configDir)) {
-        New-Item -ItemType Directory -Path $configDir -Force | Out-Null
-    }
-
-    $settings | ConvertTo-Json -Depth 10 | Out-File -FilePath $SETTINGS_PATH -Encoding UTF8 -Force
+    $obj | ConvertTo-Json -Depth 5 | Out-File -FilePath $SETTINGS_PATH -Encoding UTF8 -Force
     Remove-BOM $SETTINGS_PATH
 }
 
 function Save-CodexConfig {
-    param(
-        [Parameter(Mandatory = $true)][string]$ApiKey,
-        [Parameter(Mandatory = $true)][string]$BaseUrl,
-        [AllowEmptyString()][string]$Model
-    )
-
+    param([string]$ApiKey, [string]$Model)
     if (-not (Test-Path $CODEX_HOME)) {
         New-Item -ItemType Directory -Path $CODEX_HOME -Force | Out-Null
     }
+    [ordered]@{ OPENAI_API_KEY = $ApiKey } | ConvertTo-Json -Depth 5 | Out-File -FilePath "$CODEX_HOME\auth.json" -Encoding UTF8 -Force
+    Remove-BOM "$CODEX_HOME\auth.json"
 
-    [ordered]@{
-        OPENAI_API_KEY = $ApiKey
-    } | ConvertTo-Json -Depth 5 | Out-File -FilePath $CODEX_AUTH_PATH -Encoding UTF8 -Force
-    Remove-BOM $CODEX_AUTH_PATH
-
-    $existing = ""
-    if (Test-Path $CODEX_CONFIG_PATH) {
-        $existing = Get-Content -Path $CODEX_CONFIG_PATH -Raw -Encoding UTF8
-    }
-
-    $existing = [regex]::Replace($existing, '(?m)^model_provider\s*=.*\r?\n?', '')
-    $existing = [regex]::Replace($existing, '(?m)^model\s*=.*\r?\n?', '')
-    $existing = [regex]::Replace($existing, '(?ms)^\[model_providers\.88code\]\r?\n.*?(?=^\[|\z)', '')
-    $existing = $existing.TrimStart()
-
-    $top = "model_provider = `"$CODEX_PROVIDER_NAME`"`r`n"
-    if (-not [string]::IsNullOrWhiteSpace($Model)) {
-        $top += "model = `"$Model`"`r`n"
-    }
-    $top += "`r`n"
-
-    $provider = @"
-[model_providers.88code]
-name = "88code"
-base_url = "$BaseUrl"
-wire_api = "responses"
-requires_openai_auth = true
-
-"@
-
-    ($top + $provider + $existing.TrimStart()) | Out-File -FilePath $CODEX_CONFIG_PATH -Encoding UTF8 -Force
+    $cfg = "model_provider = `"88code`"`r`n"
+    if (-not [string]::IsNullOrWhiteSpace($Model)) { $cfg += "model = `"$Model`"`r`n" }
+    $cfg += "`r`n[model_providers.88code]`r`nname = `"88code`"`r`nbase_url = `"$DEFAULT_BASE_URL/v1`"`r`nwire_api = `"responses`"`r`nrequires_openai_auth = true`r`n"
+    $cfg | Out-File -FilePath "$CODEX_HOME\config.toml" -Encoding UTF8 -Force
 }
 
-function Refresh-Path {
-    $machinePath = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
-    $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
-    $env:Path = "$machinePath;$userPath"
-}
-
-function Test-CommandExists {
-    param([string]$Command)
-    $null -ne (Get-Command $Command -ErrorAction SilentlyContinue)
-}
-
-function Get-InstallState {
-    Refresh-Path
-
-    $nodeOk = $false
-    $nodeVersion = ""
-    if (Test-CommandExists "node") {
-        $nodeVersion = (& node --version 2>$null)
-        try {
-            $majorVersion = [int]($nodeVersion -replace 'v(\d+)\..*', '$1')
-            $nodeOk = $majorVersion -ge 18
-        }
-        catch {
-            $nodeOk = $false
-        }
-    }
-
-    $npmOk = Test-CommandExists "npm"
-    $gitOk = Test-CommandExists "git"
-    $claudeOk = Test-CommandExists "claude"
-
-    $missing = New-Object System.Collections.Generic.List[string]
-    if (-not $nodeOk) { [void]$missing.Add("Node.js 18+") }
-    if (-not $npmOk) { [void]$missing.Add("npm") }
-    if (-not $gitOk) { [void]$missing.Add("Git") }
-    if (-not $claudeOk) { [void]$missing.Add("Claude Code") }
-
-    return [pscustomobject]@{
-        NodeOk = $nodeOk
-        NpmOk = $npmOk
-        GitOk = $gitOk
-        ClaudeOk = $claudeOk
-        NodeVersion = $nodeVersion
-        Missing = $missing.ToArray()
-    }
-}
-
-function Add-Status {
-    param([string]$Message)
-    $time = Get-Date -Format "HH:mm:ss"
-    $statusBox.AppendText("[$time] $Message`r`n")
-}
-
-function New-Label {
-    param([string]$Text, [int]$X, [int]$Y, [int]$Width = 120)
-    $label = New-Object System.Windows.Forms.Label
-    $label.Text = $Text
-    $label.Location = New-Object System.Drawing.Point($X, $Y)
-    $label.Size = New-Object System.Drawing.Size($Width, 24)
-    $label.TextAlign = "MiddleLeft"
-    return $label
-}
-
-function New-Button {
-    param([string]$Text, [int]$X, [int]$Y, [int]$Width = 140)
-    $button = New-Object System.Windows.Forms.Button
-    $button.Text = $Text
-    $button.Location = New-Object System.Drawing.Point($X, $Y)
-    $button.Size = New-Object System.Drawing.Size($Width, 34)
-    return $button
-}
-
-function New-Combo {
-    param([int]$X, [int]$Y, [int]$SelectedIndex = -1)
-    $combo = New-Object System.Windows.Forms.ComboBox
-    $combo.DropDownStyle = "DropDown"
-    $combo.Location = New-Object System.Drawing.Point($X, $Y)
-    $combo.Size = New-Object System.Drawing.Size(150, 26)
-    [void]$combo.Items.AddRange($MODELS)
-    if ($SelectedIndex -ge 0) {
-        $combo.SelectedIndex = $SelectedIndex
-    }
-    return $combo
-}
-
+# ---------------------------------------------------------------------------
+# 主窗口
+# ---------------------------------------------------------------------------
 $form = New-Object System.Windows.Forms.Form
-$form.Text = "Claude / Codex 安装与 API 配置助手"
+$form.Text          = "Claude Code / Codex 安装配置助手"
 $form.StartPosition = "CenterScreen"
-$form.Size = New-Object System.Drawing.Size(760, 620)
-$form.MinimumSize = New-Object System.Drawing.Size(760, 620)
-$form.Font = New-Object System.Drawing.Font("Microsoft YaHei UI", 9)
+$form.Size          = New-Object System.Drawing.Size(780, 680)
+$form.MinimumSize   = New-Object System.Drawing.Size(780, 680)
+$form.Font          = New-Object System.Drawing.Font("Microsoft YaHei UI", 9)
 
-$title = New-Object System.Windows.Forms.Label
-$title.Text = "Claude / Codex 安装与 API 配置助手"
-$title.Font = New-Object System.Drawing.Font("Microsoft YaHei UI", 16, [System.Drawing.FontStyle]::Bold)
-$title.Location = New-Object System.Drawing.Point(24, 18)
-$title.Size = New-Object System.Drawing.Size(520, 34)
-$form.Controls.Add($title)
+# 标题
+$lblTitle = New-Object System.Windows.Forms.Label
+$lblTitle.Text     = "Claude Code / Codex 安装配置助手"
+$lblTitle.Font     = New-Object System.Drawing.Font("Microsoft YaHei UI", 14, [System.Drawing.FontStyle]::Bold)
+$lblTitle.Location = New-Object System.Drawing.Point(20, 16)
+$lblTitle.Size     = New-Object System.Drawing.Size(600, 30)
+$form.Controls.Add($lblTitle)
 
-$subtitle = New-Object System.Windows.Forms.Label
-$subtitle.Text = "先选择 Claude Code 或 Codex，再安装和配置 API；模型可选，留空则使用服务默认模型。"
-$subtitle.Location = New-Object System.Drawing.Point(26, 56)
-$subtitle.Size = New-Object System.Drawing.Size(680, 24)
-$form.Controls.Add($subtitle)
+# ---------------------------------------------------------------------------
+# 步骤 0: 模式选择
+# ---------------------------------------------------------------------------
+$grpMode = New-Object System.Windows.Forms.GroupBox
+$grpMode.Text     = "模式选择"
+$grpMode.Location = New-Object System.Drawing.Point(20, 56)
+$grpMode.Size     = New-Object System.Drawing.Size(730, 56)
+$form.Controls.Add($grpMode)
 
-$toolGroup = New-Object System.Windows.Forms.GroupBox
-$toolGroup.Text = "0. 选择工具"
-$toolGroup.Location = New-Object System.Drawing.Point(24, 88)
-$toolGroup.Size = New-Object System.Drawing.Size(700, 52)
-$form.Controls.Add($toolGroup)
+$rbFull = New-Object System.Windows.Forms.RadioButton
+$rbFull.Text     = "完整安装 (Node.js + Git + Claude Code + 配置 API)"
+$rbFull.Location = New-Object System.Drawing.Point(16, 22)
+$rbFull.Size     = New-Object System.Drawing.Size(340, 22)
+$rbFull.Checked  = $true
+$grpMode.Controls.Add($rbFull)
 
-$claudeRadio = New-Object System.Windows.Forms.RadioButton
-$claudeRadio.Text = "Claude Code"
-$claudeRadio.Location = New-Object System.Drawing.Point(22, 22)
-$claudeRadio.Size = New-Object System.Drawing.Size(130, 22)
-$claudeRadio.Checked = $true
-$toolGroup.Controls.Add($claudeRadio)
+$rbApiOnly = New-Object System.Windows.Forms.RadioButton
+$rbApiOnly.Text     = "仅配置 / 更换 API 令牌"
+$rbApiOnly.Location = New-Object System.Drawing.Point(370, 22)
+$rbApiOnly.Size     = New-Object System.Drawing.Size(220, 22)
+$grpMode.Controls.Add($rbApiOnly)
 
-$codexRadio = New-Object System.Windows.Forms.RadioButton
-$codexRadio.Text = "Codex 桌面端"
-$codexRadio.Location = New-Object System.Drawing.Point(170, 22)
-$codexRadio.Size = New-Object System.Drawing.Size(140, 22)
-$toolGroup.Controls.Add($codexRadio)
+# ---------------------------------------------------------------------------
+# 步骤 1: 工具选择
+# ---------------------------------------------------------------------------
+$grpTool = New-Object System.Windows.Forms.GroupBox
+$grpTool.Text     = "步骤 1 — 选择要安装的工具"
+$grpTool.Location = New-Object System.Drawing.Point(20, 122)
+$grpTool.Size     = New-Object System.Drawing.Size(730, 56)
+$form.Controls.Add($grpTool)
 
-$installGroup = New-Object System.Windows.Forms.GroupBox
-$installGroup.Text = "1. 安装"
-$installGroup.Location = New-Object System.Drawing.Point(24, 150)
-$installGroup.Size = New-Object System.Drawing.Size(700, 86)
-$form.Controls.Add($installGroup)
+$rbClaude = New-Object System.Windows.Forms.RadioButton
+$rbClaude.Text     = "Claude Code (推荐)"
+$rbClaude.Location = New-Object System.Drawing.Point(16, 22)
+$rbClaude.Size     = New-Object System.Drawing.Size(160, 22)
+$rbClaude.Checked  = $true
+$grpTool.Controls.Add($rbClaude)
 
-$installButton = New-Button "开始安装" 22 32 150
-$installGroup.Controls.Add($installButton)
+$rbCodex = New-Object System.Windows.Forms.RadioButton
+$rbCodex.Text     = "Codex"
+$rbCodex.Location = New-Object System.Drawing.Point(190, 22)
+$rbCodex.Size     = New-Object System.Drawing.Size(100, 22)
+$grpTool.Controls.Add($rbCodex)
 
-$installHint = New-Object System.Windows.Forms.Label
-$installHint.Text = "先检测 Node.js、npm、Git、Claude Code；全部已有则跳过，只安装缺失项。"
-$installHint.Location = New-Object System.Drawing.Point(190, 38)
-$installHint.Size = New-Object System.Drawing.Size(470, 22)
-$installGroup.Controls.Add($installHint)
+$rbBoth = New-Object System.Windows.Forms.RadioButton
+$rbBoth.Text     = "两个都装"
+$rbBoth.Location = New-Object System.Drawing.Point(300, 22)
+$rbBoth.Size     = New-Object System.Drawing.Size(120, 22)
+$grpTool.Controls.Add($rbBoth)
 
-$apiGroup = New-Object System.Windows.Forms.GroupBox
-$apiGroup.Text = "2. 配置 API"
-$apiGroup.Location = New-Object System.Drawing.Point(24, 248)
-$apiGroup.Size = New-Object System.Drawing.Size(700, 210)
-$form.Controls.Add($apiGroup)
+# ---------------------------------------------------------------------------
+# 步骤 2: 安装环境
+# ---------------------------------------------------------------------------
+$grpInstall = New-Object System.Windows.Forms.GroupBox
+$grpInstall.Text     = "步骤 2 — 安装环境 (Node.js / Git / Claude Code / Codex)"
+$grpInstall.Location = New-Object System.Drawing.Point(20, 188)
+$grpInstall.Size     = New-Object System.Drawing.Size(730, 60)
+$form.Controls.Add($grpInstall)
 
-$openTokenButton = New-Button "打开令牌页面" 22 32 150
-$apiGroup.Controls.Add($openTokenButton)
+$btnInstall = New-Object System.Windows.Forms.Button
+$btnInstall.Text     = "开始安装"
+$btnInstall.Location = New-Object System.Drawing.Point(16, 20)
+$btnInstall.Size     = New-Object System.Drawing.Size(120, 30)
+$grpInstall.Controls.Add($btnInstall)
 
-$tokenLabel = New-Label "令牌" 22 82 80
-$apiGroup.Controls.Add($tokenLabel)
+$lblInstallHint = New-Object System.Windows.Forms.Label
+$lblInstallHint.Text     = "检测已安装的组件，只安装缺失项。仅配置模式下此步骤跳过。"
+$lblInstallHint.Location = New-Object System.Drawing.Point(150, 26)
+$lblInstallHint.Size     = New-Object System.Drawing.Size(560, 20)
+$grpInstall.Controls.Add($lblInstallHint)
 
-$tokenBox = New-Object System.Windows.Forms.TextBox
-$tokenBox.Location = New-Object System.Drawing.Point(110, 82)
-$tokenBox.Size = New-Object System.Drawing.Size(420, 26)
-$tokenBox.PasswordChar = "*"
-$apiGroup.Controls.Add($tokenBox)
+# ---------------------------------------------------------------------------
+# 步骤 3: 配置 API
+# ---------------------------------------------------------------------------
+$grpApi = New-Object System.Windows.Forms.GroupBox
+$grpApi.Text     = "步骤 3 — 配置 API 令牌"
+$grpApi.Location = New-Object System.Drawing.Point(20, 260)
+$grpApi.Size     = New-Object System.Drawing.Size(730, 160)
+$form.Controls.Add($grpApi)
 
-$showToken = New-Object System.Windows.Forms.CheckBox
-$showToken.Text = "显示"
-$showToken.Location = New-Object System.Drawing.Point(548, 82)
-$showToken.Size = New-Object System.Drawing.Size(70, 24)
-$apiGroup.Controls.Add($showToken)
+$btnOpenToken = New-Object System.Windows.Forms.Button
+$btnOpenToken.Text     = "打开令牌页面"
+$btnOpenToken.Location = New-Object System.Drawing.Point(16, 24)
+$btnOpenToken.Size     = New-Object System.Drawing.Size(130, 30)
+$grpApi.Controls.Add($btnOpenToken)
 
-$baseLabel = New-Label "接口地址" 22 120 80
-$apiGroup.Controls.Add($baseLabel)
+$lblTokenUrl = New-Object System.Windows.Forms.Label
+$lblTokenUrl.Text      = $TOKEN_URL
+$lblTokenUrl.ForeColor = [System.Drawing.Color]::Blue
+$lblTokenUrl.Location  = New-Object System.Drawing.Point(158, 30)
+$lblTokenUrl.Size      = New-Object System.Drawing.Size(540, 20)
+$grpApi.Controls.Add($lblTokenUrl)
 
-$baseUrlBox = New-Object System.Windows.Forms.TextBox
-$baseUrlBox.Location = New-Object System.Drawing.Point(110, 120)
-$baseUrlBox.Size = New-Object System.Drawing.Size(420, 26)
-$baseUrlBox.Text = $DEFAULT_BASE_URL
-$apiGroup.Controls.Add($baseUrlBox)
+$lblToken = New-Object System.Windows.Forms.Label
+$lblToken.Text     = "令牌:"
+$lblToken.Location = New-Object System.Drawing.Point(16, 70)
+$lblToken.Size     = New-Object System.Drawing.Size(50, 24)
+$grpApi.Controls.Add($lblToken)
 
-$opusLabel = New-Label "Opus 可选" 22 158 70
-$sonnetLabel = New-Label "Sonnet 可选" 245 158 80
-$haikuLabel = New-Label "Haiku 可选" 475 158 75
-$apiGroup.Controls.Add($opusLabel)
-$apiGroup.Controls.Add($sonnetLabel)
-$apiGroup.Controls.Add($haikuLabel)
+$txtToken = New-Object System.Windows.Forms.TextBox
+$txtToken.Location     = New-Object System.Drawing.Point(70, 68)
+$txtToken.Size         = New-Object System.Drawing.Size(480, 26)
+$txtToken.PasswordChar = "*"
+$grpApi.Controls.Add($txtToken)
 
-$opusCombo = New-Combo 92 158
-$sonnetCombo = New-Combo 335 158
-$haikuCombo = New-Combo 550 158
-$apiGroup.Controls.Add($opusCombo)
-$apiGroup.Controls.Add($sonnetCombo)
-$apiGroup.Controls.Add($haikuCombo)
+$chkShow = New-Object System.Windows.Forms.CheckBox
+$chkShow.Text     = "显示"
+$chkShow.Location = New-Object System.Drawing.Point(562, 68)
+$chkShow.Size     = New-Object System.Drawing.Size(60, 24)
+$grpApi.Controls.Add($chkShow)
 
-$configureButton = New-Button "一键配置" 548 116 120
-$apiGroup.Controls.Add($configureButton)
+$lblModel = New-Object System.Windows.Forms.Label
+$lblModel.Text     = "模型名:"
+$lblModel.Location = New-Object System.Drawing.Point(16, 110)
+$lblModel.Size     = New-Object System.Drawing.Size(54, 24)
+$grpApi.Controls.Add($lblModel)
 
-$testButton = New-Button "测试连接" 548 32 120
-$apiGroup.Controls.Add($testButton)
+$txtModel = New-Object System.Windows.Forms.TextBox
+$txtModel.Location    = New-Object System.Drawing.Point(70, 108)
+$txtModel.Size        = New-Object System.Drawing.Size(300, 26)
+$txtModel.PlaceholderText = "留空使用服务默认（推荐）"
+$grpApi.Controls.Add($txtModel)
 
-$statusGroup = New-Object System.Windows.Forms.GroupBox
-$statusGroup.Text = "状态"
-$statusGroup.Location = New-Object System.Drawing.Point(24, 470)
-$statusGroup.Size = New-Object System.Drawing.Size(700, 98)
-$form.Controls.Add($statusGroup)
+$btnConfigure = New-Object System.Windows.Forms.Button
+$btnConfigure.Text     = "写入配置"
+$btnConfigure.Location = New-Object System.Drawing.Point(390, 106)
+$btnConfigure.Size     = New-Object System.Drawing.Size(100, 30)
+$grpApi.Controls.Add($btnConfigure)
 
-$statusBox = New-Object System.Windows.Forms.TextBox
-$statusBox.Location = New-Object System.Drawing.Point(14, 24)
-$statusBox.Size = New-Object System.Drawing.Size(672, 62)
-$statusBox.Multiline = $true
-$statusBox.ScrollBars = "Vertical"
-$statusBox.ReadOnly = $true
-$statusGroup.Controls.Add($statusBox)
+$btnTest = New-Object System.Windows.Forms.Button
+$btnTest.Text     = "测试连接"
+$btnTest.Location = New-Object System.Drawing.Point(504, 106)
+$btnTest.Size     = New-Object System.Drawing.Size(100, 30)
+$grpApi.Controls.Add($btnTest)
 
-function Get-SelectedMode {
-    if ($codexRadio.Checked) {
-        return "Codex"
-    }
-    return "Claude"
-}
+# ---------------------------------------------------------------------------
+# 状态日志
+# ---------------------------------------------------------------------------
+$grpLog = New-Object System.Windows.Forms.GroupBox
+$grpLog.Text     = "状态日志"
+$grpLog.Location = New-Object System.Drawing.Point(20, 432)
+$grpLog.Size     = New-Object System.Drawing.Size(730, 190)
+$form.Controls.Add($grpLog)
 
-function Update-ModeUi {
-    if ((Get-SelectedMode) -eq "Codex") {
-        $installHint.Text = "先检测 Codex CLI；已安装则跳过，未安装则通过 npm 安装。"
-        $baseUrlBox.Text = $CODEX_DEFAULT_BASE_URL
-        $opusLabel.Text = "模型可选"
-        $sonnetLabel.Text = "备用可选"
-        $haikuLabel.Text = "备用可选"
-        $testButton.Text = "测试 Codex"
-        $configureButton.Text = "配置 Codex"
-    }
-    else {
-        $installHint.Text = "先检测 Node.js、npm、Git、Claude Code；全部已有则跳过，只安装缺失项。"
-        $baseUrlBox.Text = $DEFAULT_BASE_URL
-        $opusLabel.Text = "Opus 可选"
-        $sonnetLabel.Text = "Sonnet 可选"
-        $haikuLabel.Text = "Haiku 可选"
-        $testButton.Text = "测试连接"
-        $configureButton.Text = "一键配置"
-    }
-}
+$txtLog = New-Object System.Windows.Forms.TextBox
+$txtLog.Location   = New-Object System.Drawing.Point(10, 22)
+$txtLog.Size       = New-Object System.Drawing.Size(708, 156)
+$txtLog.Multiline  = $true
+$txtLog.ScrollBars = "Vertical"
+$txtLog.ReadOnly   = $true
+$txtLog.Font       = New-Object System.Drawing.Font("Consolas", 8.5)
+$grpLog.Controls.Add($txtLog)
 
-$showToken.Add_CheckedChanged({
-    if ($showToken.Checked) {
-        $tokenBox.PasswordChar = [char]0
-    }
-    else {
-        $tokenBox.PasswordChar = "*"
-    }
+# ---------------------------------------------------------------------------
+# 事件: 模式切换
+# ---------------------------------------------------------------------------
+$rbFull.Add_CheckedChanged({
+    $grpInstall.Enabled = $rbFull.Checked
+    $grpTool.Enabled    = $rbFull.Checked
+})
+$rbApiOnly.Add_CheckedChanged({
+    $grpInstall.Enabled = $rbFull.Checked
+    $grpTool.Enabled    = $rbFull.Checked
 })
 
-$claudeRadio.Add_CheckedChanged({ Update-ModeUi })
-$codexRadio.Add_CheckedChanged({ Update-ModeUi })
+# ---------------------------------------------------------------------------
+# 事件: 显示令牌
+# ---------------------------------------------------------------------------
+$chkShow.Add_CheckedChanged({
+    $txtToken.PasswordChar = if ($chkShow.Checked) { [char]0 } else { "*" }
+})
 
-$openTokenButton.Add_Click({
+# ---------------------------------------------------------------------------
+# 事件: 打开令牌页面
+# ---------------------------------------------------------------------------
+$btnOpenToken.Add_Click({
     Start-Process $TOKEN_URL
-    Add-Status "已打开令牌页面：$TOKEN_URL"
+    Add-Log $txtLog "已打开浏览器: $TOKEN_URL"
 })
 
-$installButton.Add_Click({
-    $installButton.Enabled = $false
+# ---------------------------------------------------------------------------
+# 事件: 开始安装
+# ---------------------------------------------------------------------------
+$btnInstall.Add_Click({
+    $btnInstall.Enabled = $false
+    $installClaude = $rbClaude.Checked -or $rbBoth.Checked
+    $installCodex  = $rbCodex.Checked  -or $rbBoth.Checked
 
     try {
-        if ((Get-SelectedMode) -eq "Codex") {
-            Add-Status "正在检测 Codex CLI..."
-            if (Test-CommandExists "codex") {
-                $codexVersion = (& codex --version 2>$null)
-                Add-Status "检测到 Codex 已安装：$codexVersion，已跳过安装。"
-                [System.Windows.Forms.MessageBox]::Show("Codex 已安装，无需重复安装。", "已跳过安装", "OK", "Information") | Out-Null
-                return
+        # Node.js
+        Add-Log $txtLog "--- 检查 Node.js ---"
+        $skipNode = $false
+        if (Test-Cmd "node") {
+            $ver   = & node --version 2>$null
+            $major = [int]($ver -replace 'v(\d+)\..*','$1')
+            if ($major -ge 18 -and (Test-Cmd "npm")) {
+                Add-Log $txtLog "Node.js $ver 已安装，跳过。"
+                $skipNode = $true
             }
-
-            if (-not (Test-CommandExists "npm")) {
-                Add-Status "未检测到 npm，请先安装 Node.js，或切换到 Claude Code 模式点击开始安装。"
-                return
+        }
+        if (-not $skipNode) {
+            $msi = "$env:TEMP\nodejs-installer.msi"
+            if (Download-File -Url $NODEJS_URL -OutFile $msi -Desc "Node.js v${NODEJS_VERSION}" -Log $txtLog) {
+                Add-Log $txtLog "正在安装 Node.js..."
+                $p = Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /norestart" -Wait -PassThru
+                if ($p.ExitCode -eq 0) { Add-Log $txtLog "Node.js 安装成功。" }
+                else { Add-Log $txtLog "[错误] Node.js 安装失败 (代码: $($p.ExitCode))" }
+                Remove-Item $msi -Force -ErrorAction SilentlyContinue
             }
-
-            Add-Status "未检测到 Codex，开始通过 npm 安装 @openai/codex..."
-            $process = Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -Command `"npm install -g @openai/codex`"" -Wait -PassThru
-            if ($process.ExitCode -eq 0) {
-                Add-Status "Codex 安装完成。"
-            }
-            else {
-                Add-Status "Codex 安装结束，退出代码：$($process.ExitCode)。"
-            }
-            return
+            Refresh-Path
         }
 
-        Add-Status "正在检测本机安装状态..."
-        $state = Get-InstallState
-
-        if ($state.Missing.Count -eq 0) {
-            Add-Status "检测到 Node.js、npm、Git、Claude Code 均已安装，已跳过安装。"
-            [System.Windows.Forms.MessageBox]::Show("检测到所需组件都已安装，无需重复安装。", "已跳过安装", "OK", "Information") | Out-Null
-            return
-        }
-
-        Add-Status "缺少组件：$($state.Missing -join '、')。将只安装缺失或不满足要求的组件。"
-        Add-Status "开始安装，请等待安装窗口完成..."
-        $installPath = Join-Path $PSScriptRoot "install.ps1"
-        $process = Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$installPath`" -SkipApiConfig -NonInteractive" -Wait -PassThru
-        if ($process.ExitCode -eq 0) {
-            Add-Status "安装流程已完成。现在可以打开令牌页面并配置 API。"
-        }
-        else {
-            Add-Status "安装流程结束，退出代码：$($process.ExitCode)。请查看安装窗口或日志。"
-        }
-    }
-    catch {
-        Add-Status "安装启动失败：$($_.Exception.Message)"
-    }
-    finally {
-        $installButton.Enabled = $true
-    }
-})
-
-$configureButton.Add_Click({
-    $apiKey = $tokenBox.Text.Trim()
-    $baseUrl = $baseUrlBox.Text.Trim().TrimEnd("/")
-
-    if ([string]::IsNullOrWhiteSpace($apiKey)) {
-        [System.Windows.Forms.MessageBox]::Show("请先输入令牌。", "缺少令牌", "OK", "Warning") | Out-Null
-        return
-    }
-
-    if ([string]::IsNullOrWhiteSpace($baseUrl)) {
-        [System.Windows.Forms.MessageBox]::Show("请填写 API 接口地址。", "缺少接口地址", "OK", "Warning") | Out-Null
-        return
-    }
-
-    try {
-        if ((Get-SelectedMode) -eq "Codex") {
-            Save-CodexConfig -ApiKey $apiKey -BaseUrl $baseUrl -Model $opusCombo.Text.Trim()
-            Add-Status "Codex 配置成功，已写入：$CODEX_CONFIG_PATH 和 $CODEX_AUTH_PATH"
-            [System.Windows.Forms.MessageBox]::Show("Codex 配置成功。请重启 Codex 桌面端或打开新的终端运行 codex。", "配置完成", "OK", "Information") | Out-Null
-            return
-        }
-
-        Save-ApiConfig -ApiKey $apiKey -BaseUrl $baseUrl -OpusModel $opusCombo.Text.Trim() -SonnetModel $sonnetCombo.Text.Trim() -HaikuModel $haikuCombo.Text.Trim()
-        Add-Status "API 配置成功，已写入：$SETTINGS_PATH"
-        [System.Windows.Forms.MessageBox]::Show("API 配置成功。请打开新的终端运行 claude。", "配置完成", "OK", "Information") | Out-Null
-    }
-    catch {
-        Add-Status "配置失败：$($_.Exception.Message)"
-        [System.Windows.Forms.MessageBox]::Show("配置失败：$($_.Exception.Message)", "错误", "OK", "Error") | Out-Null
-    }
-})
-
-$testButton.Add_Click({
-    $apiKey = $tokenBox.Text.Trim()
-    $baseUrl = $baseUrlBox.Text.Trim().TrimEnd("/")
-
-    if ([string]::IsNullOrWhiteSpace($apiKey)) {
-        [System.Windows.Forms.MessageBox]::Show("请先输入令牌。", "缺少令牌", "OK", "Warning") | Out-Null
-        return
-    }
-
-    try {
-        if ((Get-SelectedMode) -eq "Codex") {
-            if (-not (Test-CommandExists "codex")) {
-                Add-Status "测试失败：未检测到 codex 命令，请先安装 Codex。"
-                return
-            }
-
-            Save-CodexConfig -ApiKey $apiKey -BaseUrl $baseUrl -Model $opusCombo.Text.Trim()
-            Add-Status "正在通过 Codex CLI 测试连接..."
-
-            $codexCmd = $null
-            $candidates = Get-Command codex -All -ErrorAction SilentlyContinue
-            foreach ($c in $candidates) {
-                if ($c.Source -match '\.(cmd|bat|exe)$') { $codexCmd = $c.Source; break }
-            }
-            if (-not $codexCmd -and $candidates) {
-                $candidate = $candidates | Select-Object -First 1
-                $maybeCmd = "$($candidate.Source).cmd"
-                if (Test-Path $maybeCmd) { $codexCmd = $maybeCmd }
-                else { $codexCmd = $candidate.Source }
-            }
-            if (-not $codexCmd) {
-                Add-Status "测试失败：未能解析 codex 可执行文件路径。"
-                return
-            }
-            $psi = New-Object System.Diagnostics.ProcessStartInfo
-            if ($codexCmd -match '\.(cmd|bat)$') {
-                $psi.FileName = "$env:ComSpec"
-                if ([string]::IsNullOrWhiteSpace($opusCombo.Text)) {
-                    $psi.Arguments = "/c `"`"$codexCmd`" exec `"请只回复：连接成功`"`""
-                } else {
-                    $psi.Arguments = "/c `"`"$codexCmd`" exec `"请只回复：连接成功`" --model `"$($opusCombo.Text.Trim())`"`""
-                }
-            } else {
-                $psi.FileName = $codexCmd
-                if ([string]::IsNullOrWhiteSpace($opusCombo.Text)) {
-                    $psi.Arguments = 'exec "请只回复：连接成功"'
-                } else {
-                    $psi.Arguments = "exec `"请只回复：连接成功`" --model `"$($opusCombo.Text.Trim())`""
-                }
-            }
-            $psi.UseShellExecute = $false
-            $psi.RedirectStandardOutput = $true
-            $psi.RedirectStandardError = $true
-            $psi.CreateNoWindow = $true
-            $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
-            $psi.StandardErrorEncoding = [System.Text.Encoding]::UTF8
-            $psi.EnvironmentVariables["OPENAI_API_KEY"] = $apiKey
-
-            $process = New-Object System.Diagnostics.Process
-            $process.StartInfo = $psi
-            [void]$process.Start()
-
-            if (-not $process.WaitForExit(120000)) {
-                $process.Kill()
-                Add-Status "测试超时：Codex CLI 120 秒内没有返回。"
-                return
-            }
-
-            $stdout = $process.StandardOutput.ReadToEnd().Trim()
-            $stderr = $process.StandardError.ReadToEnd().Trim()
-
-            if ($process.ExitCode -eq 0) {
-                Add-Status "Codex 测试成功：$stdout"
-            }
-            else {
-                $message = if ($stderr) { $stderr } else { $stdout }
-                Add-Status "Codex 测试失败：$message"
-            }
-            return
-        }
-
-        if (-not (Test-CommandExists "claude")) {
-            Add-Status "测试失败：未检测到 claude 命令，请先安装 Claude Code。"
-            return
-        }
-
-        $testModel = $sonnetCombo.Text.Trim()
-
-        Save-ApiConfig -ApiKey $apiKey -BaseUrl $baseUrl -OpusModel $opusCombo.Text.Trim() -SonnetModel $testModel -HaikuModel $haikuCombo.Text.Trim()
-
-        Add-Status "正在通过 Claude Code 测试连接..."
-
-        $claudeCmd = $null
-        $claudeCandidates = Get-Command claude -All -ErrorAction SilentlyContinue
-        foreach ($c in $claudeCandidates) {
-            if ($c.Source -match '\.(cmd|bat|exe)$') { $claudeCmd = $c.Source; break }
-        }
-        if (-not $claudeCmd -and $claudeCandidates) {
-            $candidate = $claudeCandidates | Select-Object -First 1
-            $maybeCmd = "$($candidate.Source).cmd"
-            if (Test-Path $maybeCmd) { $claudeCmd = $maybeCmd }
-            else { $claudeCmd = $candidate.Source }
-        }
-        if (-not $claudeCmd) {
-            Add-Status "测试失败：未能解析 claude 可执行文件路径。"
-            return
-        }
-        $psi = New-Object System.Diagnostics.ProcessStartInfo
-        if ($claudeCmd -match '\.(cmd|bat)$') {
-            $psi.FileName = "$env:ComSpec"
-            if ([string]::IsNullOrWhiteSpace($testModel)) {
-                $psi.Arguments = "/c `"`"$claudeCmd`" -p `"请只回复：连接成功`" --output-format text`""
-            } else {
-                $psi.Arguments = "/c `"`"$claudeCmd`" -p `"请只回复：连接成功`" --output-format text --model `"$testModel`"`""
-            }
+        # Git
+        Add-Log $txtLog "--- 检查 Git ---"
+        if (Test-Cmd "git") {
+            Add-Log $txtLog "$(& git --version 2>$null) 已安装，跳过。"
         } else {
-            $psi.FileName = $claudeCmd
-            if ([string]::IsNullOrWhiteSpace($testModel)) {
-                $psi.Arguments = '-p "请只回复：连接成功" --output-format text'
+            $exe = "$env:TEMP\git-installer.exe"
+            if (Download-File -Url $GIT_URL -OutFile $exe -Desc "Git v${GIT_VERSION}" -Log $txtLog) {
+                Add-Log $txtLog "正在安装 Git..."
+                $p = Start-Process $exe -ArgumentList "/VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS" -Wait -PassThru
+                if ($p.ExitCode -eq 0) { Add-Log $txtLog "Git 安装成功。" }
+                else { Add-Log $txtLog "[错误] Git 安装失败 (代码: $($p.ExitCode))" }
+                Remove-Item $exe -Force -ErrorAction SilentlyContinue
+            }
+            Refresh-Path
+        }
+
+        # npm 镜像
+        if (Test-Cmd "npm") {
+            & npm config set registry $NPM_MIRROR 2>$null
+            Add-Log $txtLog "npm 镜像源已设置: $NPM_MIRROR"
+        }
+
+        # Claude Code
+        if ($installClaude) {
+            Add-Log $txtLog "--- 安装 Claude Code ---"
+            if (Test-Cmd "claude") {
+                Add-Log $txtLog "Claude Code $(& claude --version 2>$null) 已安装，跳过。"
+            } elseif (Test-Cmd "npm") {
+                Add-Log $txtLog "正在安装 Claude Code，请稍候..."
+                $out = & npm install -g @anthropic-ai/claude-code 2>&1 | Select-Object -Last 5
+                $out | ForEach-Object { Add-Log $txtLog $_ }
+                Refresh-Path
+                if (Test-Cmd "claude") { Add-Log $txtLog "Claude Code 安装成功。" }
+                else { Add-Log $txtLog "[提示] 安装完成，需重启终端后使用 claude 命令。" }
             } else {
-                $psi.Arguments = "-p `"请只回复：连接成功`" --output-format text --model `"$testModel`""
+                Add-Log $txtLog "[错误] npm 不可用，无法安装 Claude Code。"
             }
         }
-        $psi.UseShellExecute = $false
-        $psi.RedirectStandardOutput = $true
-        $psi.RedirectStandardError = $true
-        $psi.CreateNoWindow = $true
-        $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
-        $psi.StandardErrorEncoding = [System.Text.Encoding]::UTF8
-        $psi.EnvironmentVariables["ANTHROPIC_BASE_URL"] = $baseUrl
-        $psi.EnvironmentVariables["ANTHROPIC_API_KEY"] = $apiKey
-        if ($psi.EnvironmentVariables.ContainsKey("ANTHROPIC_AUTH_TOKEN")) {
-            $psi.EnvironmentVariables.Remove("ANTHROPIC_AUTH_TOKEN")
-        }
-        foreach ($key in @("ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL")) {
-            if ($psi.EnvironmentVariables.ContainsKey($key)) {
-                $psi.EnvironmentVariables.Remove($key)
+
+        # Codex CLI
+        if ($installCodex) {
+            Add-Log $txtLog "--- 安装 Codex CLI ---"
+            if (Test-Cmd "codex") {
+                Add-Log $txtLog "Codex CLI $(& codex --version 2>$null) 已安装，跳过。"
+            } elseif (Test-Cmd "npm") {
+                Add-Log $txtLog "正在安装 Codex CLI，请稍候..."
+                $out = & npm install -g @openai/codex 2>&1 | Select-Object -Last 5
+                $out | ForEach-Object { Add-Log $txtLog $_ }
+                Refresh-Path
+                if (Test-Cmd "codex") { Add-Log $txtLog "Codex CLI 安装成功。" }
+                else { Add-Log $txtLog "[提示] 安装完成，需重启终端后使用 codex 命令。" }
+            } else {
+                Add-Log $txtLog "[错误] npm 不可用，无法安装 Codex CLI。"
+            }
+
+            # 询问是否安装桌面版
+            $ans = [System.Windows.Forms.MessageBox]::Show(
+                "是否打开 Codex 桌面版下载页面？",
+                "Codex 桌面版",
+                [System.Windows.Forms.MessageBoxButtons]::YesNo,
+                [System.Windows.Forms.MessageBoxIcon]::Question
+            )
+            if ($ans -eq [System.Windows.Forms.DialogResult]::Yes) {
+                Start-Process "https://openai.com/codex/"
+                Add-Log $txtLog "已打开 Codex 桌面版下载页面。"
             }
         }
-        if (-not [string]::IsNullOrWhiteSpace($opusCombo.Text)) {
-            $psi.EnvironmentVariables["ANTHROPIC_DEFAULT_OPUS_MODEL"] = $opusCombo.Text.Trim()
-        }
-        if (-not [string]::IsNullOrWhiteSpace($testModel)) {
-            $psi.EnvironmentVariables["ANTHROPIC_DEFAULT_SONNET_MODEL"] = $testModel
-        }
-        if (-not [string]::IsNullOrWhiteSpace($haikuCombo.Text)) {
-            $psi.EnvironmentVariables["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = $haikuCombo.Text.Trim()
-        }
 
-        $process = New-Object System.Diagnostics.Process
-        $process.StartInfo = $psi
-        [void]$process.Start()
-
-        if (-not $process.WaitForExit(90000)) {
-            $process.Kill()
-            Add-Status "测试超时：Claude Code 90 秒内没有返回。"
-            return
-        }
-
-        $stdout = $process.StandardOutput.ReadToEnd().Trim()
-        $stderr = $process.StandardError.ReadToEnd().Trim()
-
-        if ($process.ExitCode -eq 0) {
-            Add-Status "测试成功：$stdout"
-        }
-        else {
-            $message = if ($stderr) { $stderr } else { $stdout }
-            Add-Status "测试失败：$message"
-        }
-    }
-    catch {
-        Add-Status "测试失败：$($_.Exception.Message)"
+        Add-Log $txtLog "=== 安装步骤完成，请继续配置 API 令牌 ==="
+    } catch {
+        Add-Log $txtLog "[错误] $_"
+    } finally {
+        $btnInstall.Enabled = $true
     }
 })
 
-Update-ModeUi
-Add-Status "界面已启动。请先选择 Claude Code 或 Codex。"
+# ---------------------------------------------------------------------------
+# 事件: 写入配置
+# ---------------------------------------------------------------------------
+$btnConfigure.Add_Click({
+    $apiKey = $txtToken.Text.Trim()
+    $model  = $txtModel.Text.Trim()
+
+    if ([string]::IsNullOrWhiteSpace($apiKey)) {
+        [System.Windows.Forms.MessageBox]::Show("请先输入令牌。", "缺少令牌", "OK", "Warning") | Out-Null
+        return
+    }
+
+    $installClaude = $rbClaude.Checked -or $rbBoth.Checked -or $rbApiOnly.Checked
+    $installCodex  = $rbCodex.Checked  -or $rbBoth.Checked
+
+    try {
+        if ($installClaude) {
+            Save-ClaudeConfig -ApiKey $apiKey -Model $model
+            Add-Log $txtLog "Claude Code 配置已写入: $SETTINGS_PATH"
+        }
+        if ($installCodex) {
+            Save-CodexConfig -ApiKey $apiKey -Model $model
+            Add-Log $txtLog "Codex 配置已写入: $CODEX_HOME"
+        }
+        if ([string]::IsNullOrWhiteSpace($model)) {
+            Add-Log $txtLog "模型: 使用服务默认"
+        } else {
+            Add-Log $txtLog "模型: $model"
+        }
+        [System.Windows.Forms.MessageBox]::Show("配置写入成功！", "完成", "OK", "Information") | Out-Null
+    } catch {
+        Add-Log $txtLog "[错误] 配置写入失败: $_"
+    }
+})
+
+# ---------------------------------------------------------------------------
+# 事件: 测试连接
+# ---------------------------------------------------------------------------
+$btnTest.Add_Click({
+    $apiKey = $txtToken.Text.Trim()
+
+    if ([string]::IsNullOrWhiteSpace($apiKey)) {
+        [System.Windows.Forms.MessageBox]::Show("请先输入令牌。", "缺少令牌", "OK", "Warning") | Out-Null
+        return
+    }
+
+    $btnTest.Enabled = $false
+    Add-Log $txtLog "正在测试 API 连接..."
+
+    try {
+        $headers = @{
+            "Authorization" = "Bearer $apiKey"
+            "Content-Type"  = "application/json"
+        }
+        $response = Invoke-RestMethod -Uri "${DEFAULT_BASE_URL}/v1/models" -Headers $headers -Method Get -TimeoutSec 10 -ErrorAction Stop
+        Add-Log $txtLog "[成功] API 连接测试通过！"
+        [System.Windows.Forms.MessageBox]::Show("API 连接测试成功！", "测试通过", "OK", "Information") | Out-Null
+    } catch {
+        Add-Log $txtLog "[失败] API 连接测试失败: $($_.Exception.Message)"
+        $ans = [System.Windows.Forms.MessageBox]::Show(
+            "API 连接失败。`n`n可能原因:`n  1. 令牌错误或已过期`n  2. 网络连接问题`n  3. API 服务暂时不可用`n`n是否打开配置文件手动检查？",
+            "连接失败",
+            [System.Windows.Forms.MessageBoxButtons]::YesNo,
+            [System.Windows.Forms.MessageBoxIcon]::Warning
+        )
+        if ($ans -eq [System.Windows.Forms.DialogResult]::Yes) {
+            if (Test-Path $SETTINGS_PATH) {
+                Start-Process notepad $SETTINGS_PATH
+            } else {
+                Add-Log $txtLog "[提示] 配置文件不存在，请先点击「写入配置」。"
+            }
+        }
+    } finally {
+        $btnTest.Enabled = $true
+    }
+})
+
+# ---------------------------------------------------------------------------
+# 启动
+# ---------------------------------------------------------------------------
+Add-Log $txtLog "界面已启动。请选择模式和工具，然后按步骤操作。"
+Refresh-Path
+
+# 检测当前状态
+$status = @()
+if (Test-Cmd "node") { $status += "Node.js $(& node --version 2>$null)" }
+if (Test-Cmd "git")   { $status += "$(& git --version 2>$null)" }
+if (Test-Cmd "claude") { $status += "Claude Code 已安装" }
+if (Test-Cmd "codex")  { $status += "Codex CLI 已安装" }
+if ($status.Count -gt 0) {
+    Add-Log $txtLog "当前已安装: $($status -join ' | ')"
+}
+if (Test-Path $SETTINGS_PATH) {
+    if (Select-String -Path $SETTINGS_PATH -Pattern "ANTHROPIC_AUTH_TOKEN" -Quiet) {
+        Add-Log $txtLog "检测到已有 Claude Code API 配置。"
+    }
+}
+
 [void]$form.ShowDialog()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
