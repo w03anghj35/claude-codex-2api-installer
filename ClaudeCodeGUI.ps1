@@ -128,7 +128,7 @@ function Save-ApiConfig {
         New-Item -ItemType Directory -Path $configDir -Force | Out-Null
     }
 
-    $settings | ConvertTo-Json -Depth 10 | Out-File -FilePath $SETTINGS_PATH -Encoding utf8NoBOM -Force
+    $settings | ConvertTo-Json -Depth 10 | Out-File -FilePath $SETTINGS_PATH -Encoding UTF8 -Force
     Remove-BOM $SETTINGS_PATH
 }
 
@@ -145,7 +145,7 @@ function Save-CodexConfig {
 
     [ordered]@{
         OPENAI_API_KEY = $ApiKey
-    } | ConvertTo-Json -Depth 5 | Out-File -FilePath $CODEX_AUTH_PATH -Encoding utf8NoBOM -Force
+    } | ConvertTo-Json -Depth 5 | Out-File -FilePath $CODEX_AUTH_PATH -Encoding UTF8 -Force
     Remove-BOM $CODEX_AUTH_PATH
 
     $existing = ""

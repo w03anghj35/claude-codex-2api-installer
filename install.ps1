@@ -346,7 +346,7 @@ if ($providerChoice -ge "1" -and $providerChoice -le "6") {
                 }
             }
         }
-        $settingsObj | ConvertTo-Json -Depth 5 | Out-File -FilePath "$claudeConfigDir\settings.json" -Encoding utf8NoBOM -Force
+        $settingsObj | ConvertTo-Json -Depth 5 | Out-File -FilePath "$claudeConfigDir\settings.json" -Encoding UTF8 -Force
         Remove-BOM "$claudeConfigDir\settings.json"
 
         Write-Info "配置完成:"

@@ -262,7 +262,7 @@ if ([string]::IsNullOrWhiteSpace($apiKey) -or $apiKey -eq 'S' -or $apiKey -eq 's
                 }
             }
         }
-        $settingsObj | ConvertTo-Json -Depth 5 | Out-File -FilePath $SETTINGS_PATH -Encoding utf8NoBOM -Force
+        $settingsObj | ConvertTo-Json -Depth 5 | Out-File -FilePath $SETTINGS_PATH -Encoding UTF8 -Force
         Remove-BOM $SETTINGS_PATH
         Info "Claude Code 配置完成"
     }
@@ -274,7 +274,7 @@ if ([string]::IsNullOrWhiteSpace($apiKey) -or $apiKey -eq 'S' -or $apiKey -eq 's
             New-Item -ItemType Directory -Path $codexHome -Force | Out-Null
         }
 
-        [ordered]@{ OPENAI_API_KEY = $apiKey } | ConvertTo-Json -Depth 5 | Out-File -FilePath "$codexHome\auth.json" -Encoding utf8NoBOM -Force
+        [ordered]@{ OPENAI_API_KEY = $apiKey } | ConvertTo-Json -Depth 5 | Out-File -FilePath "$codexHome\auth.json" -Encoding UTF8 -Force
         Remove-BOM "$codexHome\auth.json"
 
         $codexBaseUrl = "https://2api.cloud/v1"
@@ -283,7 +283,7 @@ if ([string]::IsNullOrWhiteSpace($apiKey) -or $apiKey -eq 'S' -or $apiKey -eq 's
             $codexConfig += "model = `"$selectedModel`"`r`n"
         }
         $codexConfig += "`r`n[model_providers.88code]`r`nname = `"88code`"`r`nbase_url = `"$codexBaseUrl`"`r`nwire_api = `"responses`"`r`nrequires_openai_auth = true`r`n"
-        $codexConfig | Out-File -FilePath "$codexHome\config.toml" -Encoding utf8NoBOM -Force
+        $codexConfig | Out-File -FilePath "$codexHome\config.toml" -Encoding UTF8 -Force
         Info "Codex 配置完成"
     }
 
