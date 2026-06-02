@@ -162,9 +162,11 @@ class App(tk.Tk):
         row2 = tk.Frame(grp_api, bg="#f5f5f5")
         row2.pack(fill="x", padx=8, pady=4)
         tk.Label(row2, text="模型:", bg="#f5f5f5", width=6, anchor="e").pack(side="left")
-        self._txt_model = ttk.Entry(row2, width=48)
+        self._txt_model = ttk.Entry(row2, width=48, foreground="gray")
+        self._txt_model.insert(0, "留空使用服务默认（推荐）")
+        self._txt_model.bind("<FocusIn>", self._on_model_focus_in)
+        self._txt_model.bind("<FocusOut>", self._on_model_focus_out)
         self._txt_model.pack(side="left", padx=4)
-        tk.Label(row2, text="留空使用服务默认（推荐）", fg="gray", bg="#f5f5f5").pack(side="left", padx=4)
 
         row3 = tk.Frame(grp_api, bg="#f5f5f5")
         row3.pack(fill="x", padx=8, pady=(0, 8))
@@ -172,13 +174,23 @@ class App(tk.Tk):
         self._btn_configure.pack(side="left", padx=0)
         self._btn_test = ttk.Button(row3, text="测试连接", command=self._on_test)
         self._btn_test.pack(side="left", padx=8)
+        ttk.Button(row3, text="查看配置", command=self._on_view_config).pack(side="left", padx=8)
 
         # 日志
         grp_log = ttk.LabelFrame(self, text="日志")
         grp_log.pack(fill="both", expand=True, padx=12, pady=4)
-        self._txt_log = scrolledtext.ScrolledText(grp_log, height=10, state="disabled",
+
+        log_toolbar = tk.Frame(grp_log, bg="#f5f5f5")
+        log_toolbar.pack(fill="x", padx=4, pady=(4, 0))
+        ttk.Button(log_toolbar, text="编辑 Claude 配置", command=lambda: self._edit_config("claude")).pack(side="left", padx=2)
+        ttk.Button(log_toolbar, text="编辑 Codex 配置", command=lambda: self._edit_config("codex")).pack(side="left", padx=2)
+        ttk.Button(log_toolbar, text="保存配置", command=self._save_config).pack(side="left", padx=2)
+        ttk.Button(log_toolbar, text="清空日志", command=self._clear_log).pack(side="left", padx=2)
+
+        self._txt_log = scrolledtext.ScrolledText(grp_log, height=10,
                                                    font=("Courier", 9), bg="#1e1e1e", fg="#d4d4d4")
         self._txt_log.pack(fill="both", expand=True, padx=4, pady=4)
+        self._editing_config = None  # 当前正在编辑的配置文件路径
 
     def _on_mode_change(self):
         api_only = self._mode.get() == "api_only"
@@ -190,16 +202,96 @@ class App(tk.Tk):
     def _toggle_token(self):
         self._txt_token.configure(show="" if self._chk_show_var.get() else "*")
 
+    def _on_model_focus_in(self, event):
+        if self._txt_model.get() == "留空使用服务默认（推荐）":
+            self._txt_model.delete(0, "end")
+            self._txt_model.configure(foreground="black")
+
+    def _on_model_focus_out(self, event):
+        if not self._txt_model.get().strip():
+            self._txt_model.insert(0, "留空使用服务默认（推荐）")
+            self._txt_model.configure(foreground="gray")
+
     def _open_url(self, url):
         import webbrowser
         webbrowser.open(url)
 
     def _log(self, msg):
-        self._txt_log.configure(state="normal")
         ts = datetime.now().strftime("%H:%M:%S")
         self._txt_log.insert("end", f"[{ts}] {msg}\n")
         self._txt_log.see("end")
-        self._txt_log.configure(state="disabled")
+
+    def _clear_log(self):
+        self._txt_log.delete("1.0", "end")
+        self._editing_config = None
+
+    def _view_config(self):
+        """用系统编辑器打开配置文件"""
+        files = []
+        if SETTINGS_PATH.exists():
+            files.append(("Claude Code", str(SETTINGS_PATH)))
+        if (CODEX_HOME / "config.toml").exists():
+            files.append(("Codex config.toml", str(CODEX_HOME / "config.toml")))
+        if (CODEX_HOME / "auth.json").exists():
+            files.append(("Codex auth.json", str(CODEX_HOME / "auth.json")))
+
+        if not files:
+            messagebox.showinfo("提示", "未找到配置文件，请先写入配置。")
+            return
+
+        for name, path in files:
+            if IS_WIN:
+                subprocess.Popen(["notepad", path])
+            elif IS_MAC:
+                subprocess.Popen(["open", "-e", path])
+            else:
+                subprocess.Popen(["xdg-open", path])
+            self._log(f"已打开 {name}: {path}")
+
+    def _edit_config(self, config_type):
+        """在日志区编辑配置文件"""
+        if config_type == "claude":
+            path = SETTINGS_PATH
+        elif config_type == "codex":
+            path = CODEX_HOME / "config.toml"
+        else:
+            return
+
+        if not path.exists():
+            messagebox.showwarning("文件不存在", f"配置文件不存在: {path}\n请先写入配置。")
+            return
+
+        self._txt_log.delete("1.0", "end")
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+        self._txt_log.insert("1.0", content)
+        self._editing_config = path
+        self._log(f"\n--- 正在编辑: {path} ---")
+        self._log("编辑完成后点击「保存配置」")
+
+    def _save_config(self):
+        """保存从日志区编辑的配置"""
+        if not self._editing_config:
+            messagebox.showwarning("提示", "当前没有打开配置文件编辑。\n请先点击「编辑 Claude 配置」或「编辑 Codex 配置」。")
+            return
+
+        content = self._txt_log.get("1.0", "end-1c")
+        # 移除日志提示行
+        lines = content.split("\n")
+        lines = [l for l in lines if not l.startswith("---") and not l.startswith("编辑完成后")]
+        content = "\n".join(lines).strip()
+
+        try:
+            with open(self._editing_config, "w", encoding="utf-8") as f:
+                f.write(content)
+            messagebox.showinfo("成功", f"配置已保存到:\n{self._editing_config}")
+            self._clear_log()
+            self._log(f"配置已保存: {self._editing_config}")
+        except Exception as e:
+            messagebox.showerror("保存失败", f"保存配置失败:\n{e}")
+
+    def _on_view_config(self):
+        self._view_config()
 
     def _check_status(self):
         status = []
@@ -305,6 +397,11 @@ class App(tk.Tk):
     def _on_configure(self):
         api_key = self._txt_token.get().strip()
         model   = self._txt_model.get().strip()
+
+        # 过滤 placeholder 文本
+        if model == "留空使用服务默认（推荐）":
+            model = ""
+
         if not api_key:
             messagebox.showwarning("缺少令牌", "请先输入令牌。")
             return
