@@ -176,6 +176,7 @@ class App(tk.Tk):
         self._btn_test = ttk.Button(row3, text="测试连接", command=self._on_test)
         self._btn_test.pack(side="left", padx=8)
         ttk.Button(row3, text="查看配置", command=self._on_view_config).pack(side="left", padx=8)
+        ttk.Button(row3, text="检查冲突", command=self._check_duplicate_configs).pack(side="left", padx=8)
 
         # 日志
         grp_log = ttk.LabelFrame(self, text="日志")
@@ -519,6 +520,53 @@ class App(tk.Tk):
             self._log("[提示] 当前非管理员运行，安装环境需以管理员/sudo 身份启动。配置 API 不受影响。")
         if status:
             self._log("当前已安装: " + " | ".join(status))
+
+    def _check_duplicate_configs(self):
+        """检测并处理重复的配置文件"""
+        duplicates = []
+
+        # 检查 Claude Code 配置目录
+        if SETTINGS_DIR.exists():
+            config_files = list(SETTINGS_DIR.glob("*.json"))
+            if len(config_files) > 1:
+                duplicates.append(("Claude Code", SETTINGS_DIR, config_files))
+
+        # 检查 Codex 配置目录
+        if CODEX_HOME.exists():
+            json_files = list(CODEX_HOME.glob("*.json"))
+            toml_files = list(CODEX_HOME.glob("*.toml"))
+            # 正常应该只有 auth.json 和 config.toml
+            if len(json_files) > 1 or len(toml_files) > 1:
+                duplicates.append(("Codex", CODEX_HOME, json_files + toml_files))
+
+        if not duplicates:
+            return
+
+        # 发现重复配置，询问用户
+        msg = "检测到可能存在冲突的配置文件：\n\n"
+        for name, dir_path, files in duplicates:
+            msg += f"【{name}】目录: {dir_path}\n"
+            for f in files:
+                msg += f"  - {f.name}\n"
+            msg += "\n"
+
+        msg += "这可能导致配置冲突。是否需要清理？\n\n"
+        msg += "• 点击「是」- 打开配置目录，手动删除或备份多余文件\n"
+        msg += "• 点击「否」- 跳过，稍后自行处理"
+
+        result = messagebox.askyesno("发现重复配置文件", msg, icon="warning")
+
+        if result:
+            # 打开配置目录让用户处理
+            for name, dir_path, files in duplicates:
+                if IS_WIN:
+                    subprocess.Popen(["explorer", str(dir_path)])
+                elif IS_MAC:
+                    subprocess.Popen(["open", str(dir_path)])
+                else:
+                    subprocess.Popen(["xdg-open", str(dir_path)])
+
+            self._log("[警告] 已打开配置目录，请手动删除或重命名多余的配置文件（建议加 .bak 后缀备份）")
 
     # -----------------------------------------------------------------------
     # 安装
