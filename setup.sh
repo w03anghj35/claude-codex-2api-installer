@@ -302,9 +302,69 @@ fi
 fi # end if api_only_mode = false
 
 # ---------------------------------------------------------------------------
+# 配置冲突检测
+# ---------------------------------------------------------------------------
+check_config_conflicts() {
+    local has_conflict=false
+
+    # 检查 Claude Code 配置目录
+    if [ -d "$SETTINGS_DIR" ]; then
+        local json_count=$(find "$SETTINGS_DIR" -maxdepth 1 -name "*.json" 2>/dev/null | wc -l)
+        if [ "$json_count" -gt 1 ]; then
+            warn "检测到 $SETTINGS_DIR 目录有多个 .json 配置文件，可能导致冲突"
+            find "$SETTINGS_DIR" -maxdepth 1 -name "*.json" -exec echo "    - {}" \;
+            has_conflict=true
+        fi
+    fi
+
+    # 检查 Codex 配置目录
+    if [ -d "$HOME/.codex" ]; then
+        local json_count=$(find "$HOME/.codex" -maxdepth 1 -name "*.json" 2>/dev/null | wc -l)
+        local toml_count=$(find "$HOME/.codex" -maxdepth 1 -name "*.toml" 2>/dev/null | wc -l)
+        if [ "$json_count" -gt 1 ] || [ "$toml_count" -gt 1 ]; then
+            warn "检测到 $HOME/.codex 目录有多个配置文件，可能导致冲突"
+            find "$HOME/.codex" -maxdepth 1 \( -name "*.json" -o -name "*.toml" \) -exec echo "    - {}" \;
+            has_conflict=true
+        fi
+    fi
+
+    if [ "$has_conflict" = true ]; then
+        echo ""
+        echo -e "  ${YELLOW}建议：删除多余的配置文件或重命名为 .bak 备份${NC}"
+        echo ""
+        read -rp "  按 Enter 继续..."
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# 获取模型列表
+# ---------------------------------------------------------------------------
+fetch_models() {
+    local api_key="$1"
+    local base_url="${DEFAULT_BASE_URL%/}/v1/models"
+
+    if command_exists curl; then
+        echo -e "  ${CYAN}正在获取可用模型列表...${NC}"
+        local response=$(curl -s -H "Authorization: Bearer ${api_key}" -H "Content-Type: application/json" --max-time 10 "$base_url" 2>/dev/null)
+
+        if echo "$response" | grep -q '"id"'; then
+            echo ""
+            echo "  可用模型："
+            echo "$response" | grep -oP '"id":\s*"\K[^"]+' | nl -w2 -s'. '
+            echo ""
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# ---------------------------------------------------------------------------
 # 步骤 5: 配置 API
 # ---------------------------------------------------------------------------
 step "配置 API 令牌"
+
+# 先检测配置冲突
+check_config_conflicts
 
 echo ""
 echo "  需要一个 API 令牌才能运行。"
@@ -324,7 +384,27 @@ if [ -z "$api_key" ] || [ "$api_key" = "S" ] || [ "$api_key" = "s" ]; then
     info "跳过 API 配置，稍后可重新运行本脚本"
 else
     echo ""
-    read -rp "  输入模型名 (留空使用服务默认，推荐直接回车): " selected_model
+
+    # 尝试获取模型列表
+    if fetch_models "$api_key"; then
+        read -rp "  输入模型编号或名称 (留空使用服务默认，推荐直接回车): " model_input
+
+        # 如果输入的是数字，从列表中选择
+        if [[ "$model_input" =~ ^[0-9]+$ ]]; then
+            response=$(curl -s -H "Authorization: Bearer ${api_key}" -H "Content-Type: application/json" --max-time 10 "${DEFAULT_BASE_URL%/}/v1/models" 2>/dev/null)
+            selected_model=$(echo "$response" | grep -oP '"id":\s*"\K[^"]+' | sed -n "${model_input}p")
+            if [ -z "$selected_model" ]; then
+                warn "无效的模型编号，使用服务默认"
+                selected_model=""
+            else
+                info "已选择模型: $selected_model"
+            fi
+        else
+            selected_model="$model_input"
+        fi
+    else
+        read -rp "  输入模型名 (留空使用服务默认，推荐直接回车): " selected_model
+    fi
 
     # 配置 Claude Code
     if [ "$install_claude" = true ]; then
@@ -470,6 +550,224 @@ EOF
 fi
 
 # ---------------------------------------------------------------------------
+# 测试 Codex API
+# ---------------------------------------------------------------------------
+test_codex_api() {
+    local codex_auth="$HOME/.codex/auth.json"
+    local codex_config="$HOME/.codex/config.toml"
+
+    if [ ! -f "$codex_auth" ]; then
+        err "未找到 Codex 配置文件: $codex_auth"
+        return 1
+    fi
+
+    # 读取 API key
+    local api_key=$(grep -oP '"OPENAI_API_KEY":\s*"\K[^"]+' "$codex_auth" 2>/dev/null)
+    if [ -z "$api_key" ]; then
+        err "未找到 OPENAI_API_KEY"
+        return 1
+    fi
+
+    # 读取 base_url
+    local base_url=""
+    if [ -f "$codex_config" ]; then
+        base_url=$(grep -oP 'base_url\s*=\s*"\K[^"]+' "$codex_config" 2>/dev/null)
+    fi
+    base_url=${base_url:-"https://2api.cloud/v1"}
+
+    echo -e "  ${CYAN}正在测试 Codex API 连接...${NC}"
+    if command_exists curl; then
+        response=$(curl -s -w "\n%{http_code}" -H "Authorization: Bearer ${api_key}" -H "Content-Type: application/json" --max-time 10 "${base_url}/models" 2>/dev/null)
+        http_code=$(echo "$response" | tail -n1)
+
+        if [ "$http_code" = "200" ]; then
+            info "Codex API 连接测试成功"
+            return 0
+        else
+            err "Codex API 连接测试失败: HTTP $http_code"
+            return 1
+        fi
+    else
+        warn "未找到 curl，无法测试"
+        return 1
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# 配置管理菜单
+# ---------------------------------------------------------------------------
+config_menu() {
+    while true; do
+        echo ""
+        echo -e "  ${CYAN}╔══════════════════════════════════════════════════════════╗${NC}"
+        echo -e "  ${CYAN}║                   配置管理菜单                          ║${NC}"
+        echo -e "  ${CYAN}╚══════════════════════════════════════════════════════════╝${NC}"
+        echo ""
+        echo "  [1] 查看配置文件"
+        echo "  [2] 编辑配置文件"
+        echo "  [3] 测试 API 连接"
+        echo "  [4] 检查配置冲突"
+        echo "  [5] 获取模型列表"
+        echo "  [Q] 退出"
+        echo ""
+
+        read -rp "  请选择 [1-5/Q]: " menu_choice
+
+        case "$menu_choice" in
+            1)
+                echo ""
+                if [ -f "$SETTINGS_PATH" ]; then
+                    echo -e "  ${CYAN}Claude Code 配置文件: $SETTINGS_PATH${NC}"
+                    cat "$SETTINGS_PATH"
+                else
+                    warn "Claude Code 配置文件不存在"
+                fi
+                echo ""
+                if [ -f "$HOME/.codex/auth.json" ]; then
+                    echo -e "  ${CYAN}Codex auth.json: $HOME/.codex/auth.json${NC}"
+                    cat "$HOME/.codex/auth.json"
+                else
+                    warn "Codex auth.json 不存在"
+                fi
+                echo ""
+                if [ -f "$HOME/.codex/config.toml" ]; then
+                    echo -e "  ${CYAN}Codex config.toml: $HOME/.codex/config.toml${NC}"
+                    cat "$HOME/.codex/config.toml"
+                else
+                    warn "Codex config.toml 不存在"
+                fi
+                ;;
+            2)
+                echo ""
+                echo "  选择要编辑的配置文件:"
+                echo "  [1] Claude Code settings.json"
+                echo "  [2] Codex auth.json"
+                echo "  [3] Codex config.toml"
+                echo ""
+                read -rp "  请选择 [1-3]: " edit_choice
+
+                case "$edit_choice" in
+                    1)
+                        if [ -f "$SETTINGS_PATH" ]; then
+                            if command_exists code; then
+                                code "$SETTINGS_PATH"
+                            elif command_exists nano; then
+                                nano "$SETTINGS_PATH"
+                            elif command_exists vi; then
+                                vi "$SETTINGS_PATH"
+                            else
+                                echo -e "  ${YELLOW}请手动编辑: $SETTINGS_PATH${NC}"
+                            fi
+                        else
+                            warn "配置文件不存在"
+                        fi
+                        ;;
+                    2)
+                        if [ -f "$HOME/.codex/auth.json" ]; then
+                            if command_exists code; then
+                                code "$HOME/.codex/auth.json"
+                            elif command_exists nano; then
+                                nano "$HOME/.codex/auth.json"
+                            elif command_exists vi; then
+                                vi "$HOME/.codex/auth.json"
+                            else
+                                echo -e "  ${YELLOW}请手动编辑: $HOME/.codex/auth.json${NC}"
+                            fi
+                        else
+                            warn "配置文件不存在"
+                        fi
+                        ;;
+                    3)
+                        if [ -f "$HOME/.codex/config.toml" ]; then
+                            if command_exists code; then
+                                code "$HOME/.codex/config.toml"
+                            elif command_exists nano; then
+                                nano "$HOME/.codex/config.toml"
+                            elif command_exists vi; then
+                                vi "$HOME/.codex/config.toml"
+                            else
+                                echo -e "  ${YELLOW}请手动编辑: $HOME/.codex/config.toml${NC}"
+                            fi
+                        else
+                            warn "配置文件不存在"
+                        fi
+                        ;;
+                esac
+                ;;
+            3)
+                echo ""
+                echo "  选择要测试的 API:"
+                echo "  [1] Claude Code API"
+                echo "  [2] Codex API"
+                echo "  [3] 全部测试"
+                echo ""
+                read -rp "  请选择 [1-3]: " test_choice
+
+                case "$test_choice" in
+                    1|3)
+                        if [ -f "$SETTINGS_PATH" ]; then
+                            api_key=$(grep -oP '"ANTHROPIC_AUTH_TOKEN":\s*"\K[^"]+' "$SETTINGS_PATH" 2>/dev/null)
+                            if [ -n "$api_key" ]; then
+                                test_url="${DEFAULT_BASE_URL}v1/models"
+                                echo -e "  ${CYAN}正在测试 Claude Code API...${NC}"
+                                response=$(curl -s -w "\n%{http_code}" -H "Authorization: Bearer ${api_key}" -H "Content-Type: application/json" --max-time 10 "$test_url" 2>/dev/null)
+                                http_code=$(echo "$response" | tail -n1)
+                                if [ "$http_code" = "200" ]; then
+                                    info "Claude Code API 连接测试成功"
+                                else
+                                    err "Claude Code API 连接测试失败: HTTP $http_code"
+                                fi
+                            else
+                                warn "未找到 Claude Code API 令牌"
+                            fi
+                        else
+                            warn "Claude Code 配置文件不存在"
+                        fi
+
+                        if [ "$test_choice" = "3" ]; then
+                            echo ""
+                            test_codex_api
+                        fi
+                        ;;
+                    2)
+                        test_codex_api
+                        ;;
+                esac
+                ;;
+            4)
+                check_config_conflicts
+                ;;
+            5)
+                echo ""
+                if [ -f "$SETTINGS_PATH" ]; then
+                    api_key=$(grep -oP '"ANTHROPIC_AUTH_TOKEN":\s*"\K[^"]+' "$SETTINGS_PATH" 2>/dev/null)
+                    if [ -n "$api_key" ]; then
+                        fetch_models "$api_key"
+                    else
+                        warn "未找到 API 令牌"
+                    fi
+                else
+                    warn "配置文件不存在"
+                fi
+                ;;
+            Q|q)
+                echo ""
+                info "退出配置管理"
+                break
+                ;;
+            *)
+                warn "无效选择"
+                ;;
+        esac
+
+        if [ "$menu_choice" != "Q" ] && [ "$menu_choice" != "q" ]; then
+            echo ""
+            read -rp "  按 Enter 继续..."
+        fi
+    done
+}
+
+# ---------------------------------------------------------------------------
 # 完成
 # ---------------------------------------------------------------------------
 echo ""
@@ -505,3 +803,15 @@ else
     warn "API 令牌未配置"
 fi
 echo ""
+
+# 提供配置管理菜单
+echo ""
+read -rp "  是否进入配置管理菜单? [y/N]: " enter_menu
+if [ "$enter_menu" = "y" ] || [ "$enter_menu" = "Y" ]; then
+    config_menu
+fi
+
+echo ""
+info "安装完成！"
+echo ""
+
