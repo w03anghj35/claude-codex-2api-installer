@@ -328,13 +328,20 @@ class App(tk.Tk):
         # 弹出文件选择对话框
         from tkinter import filedialog
 
-        messagebox.showinfo("提示", "请选择 cc-switch.exe 文件\n通常位于 CC Switch 安装目录")
-
-        file_path = filedialog.askopenfilename(
-            title="选择 cc-switch.exe",
-            filetypes=[("可执行文件", "*.exe"), ("所有文件", "*.*")],
-            initialdir=str(Path.home() / "Desktop")
-        )
+        if IS_WIN:
+            messagebox.showinfo("提示", "请选择 cc-switch.exe 文件\n通常位于 CC Switch 安装目录")
+            file_path = filedialog.askopenfilename(
+                title="选择 cc-switch.exe",
+                filetypes=[("可执行文件", "*.exe"), ("所有文件", "*.*")],
+                initialdir=str(Path.home() / "Desktop")
+            )
+        else:
+            messagebox.showinfo("提示", "请选择 ccswitch 可执行文件")
+            file_path = filedialog.askopenfilename(
+                title="选择 ccswitch",
+                filetypes=[("所有文件", "*.*")],
+                initialdir=str(Path.home())
+            )
 
         if not file_path:
             return
@@ -342,8 +349,12 @@ class App(tk.Tk):
         try:
             if IS_WIN:
                 subprocess.Popen([file_path], creationflags=subprocess.CREATE_NEW_CONSOLE)
+            elif IS_MAC:
+                # Mac 下在新终端窗口打开
+                subprocess.Popen(["open", "-a", "Terminal", file_path])
             else:
-                subprocess.Popen([file_path])
+                # Linux 下在新终端打开
+                subprocess.Popen(["x-terminal-emulator", "-e", file_path])
             self._log(f"已打开: {file_path}")
         except Exception as e:
             messagebox.showerror("错误", f"打开失败:\n{e}")
