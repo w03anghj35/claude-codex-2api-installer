@@ -190,6 +190,7 @@ class App(tk.Tk):
         self._btn_save_config.pack(side="left", padx=2)
         self._btn_test_config = ttk.Button(log_toolbar, text="测试配置", command=self._test_current_config, state="disabled")
         self._btn_test_config.pack(side="left", padx=2)
+        ttk.Button(log_toolbar, text="打开 ccswitch", command=self._open_ccswitch).pack(side="left", padx=2)
         ttk.Button(log_toolbar, text="清空日志", command=self._clear_log).pack(side="left", padx=2)
 
         # 编辑提示标签
@@ -321,6 +322,31 @@ class App(tk.Tk):
         self._editing_config_type = None
         self._btn_test_config.configure(text="测试配置", state="disabled")
         self._lbl_editing.configure(text="")
+
+    def _open_ccswitch(self):
+        """打开 ccswitch 工具"""
+        # 弹出文件选择对话框
+        from tkinter import filedialog
+
+        messagebox.showinfo("提示", "请选择 cc-switch.exe 文件\n通常位于 CC Switch 安装目录")
+
+        file_path = filedialog.askopenfilename(
+            title="选择 cc-switch.exe",
+            filetypes=[("可执行文件", "*.exe"), ("所有文件", "*.*")],
+            initialdir=str(Path.home() / "Desktop")
+        )
+
+        if not file_path:
+            return
+
+        try:
+            if IS_WIN:
+                subprocess.Popen([file_path], creationflags=subprocess.CREATE_NEW_CONSOLE)
+            else:
+                subprocess.Popen([file_path])
+            self._log(f"已打开: {file_path}")
+        except Exception as e:
+            messagebox.showerror("错误", f"打开失败:\n{e}")
 
     def _view_config(self):
         """用系统编辑器打开配置文件"""
