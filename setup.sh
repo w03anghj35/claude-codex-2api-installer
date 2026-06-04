@@ -91,12 +91,7 @@ echo "    [2] 仅配置 / 更换 API 令牌"
 echo "    [Q] 退出"
 echo ""
 
-# 如果是 pipe 模式 (curl | bash)，需要从 /dev/tty 读取输入
-if [ ! -t 0 ]; then
-    exec < /dev/tty
-fi
-
-read -rp "  请选择 [1/2/Q] (默认 1): " mode_choice
+read -rp "  请选择 [1/2/Q] (默认 1): " mode_choice < /dev/tty
 mode_choice=${mode_choice:-1}
 
 if [ "$mode_choice" = "Q" ] || [ "$mode_choice" = "q" ]; then
@@ -127,7 +122,7 @@ if [ "$api_only_mode" = false ]; then
     echo "    [3] 两个都装"
     echo ""
 
-    read -rp "  请选择 [1-3] (默认 1): " tool_choice
+    read -rp "  请选择 [1-3] (默认 1): " tool_choice < /dev/tty
     tool_choice=${tool_choice:-1}
 
     case "$tool_choice" in
@@ -137,7 +132,7 @@ if [ "$api_only_mode" = false ]; then
         *) install_claude=true ;;
     esac
 
-    read -rp "  按 Enter 开始安装，输入 Q 退出: " confirm
+    read -rp "  按 Enter 开始安装，输入 Q 退出: " confirm < /dev/tty
     if [ "$confirm" = "Q" ] || [ "$confirm" = "q" ]; then
         echo "  已取消。"
         exit 0
@@ -289,13 +284,13 @@ if [ "$install_codex" = true ]; then
 
     # 询问是否安装桌面版
     echo ""
-    read -rp "  是否安装 Codex 桌面版? [y/N]: " install_desktop
+    read -rp "  是否安装 Codex 桌面版? [y/N]: " install_desktop < /dev/tty
     if [ "$install_desktop" = "y" ] || [ "$install_desktop" = "Y" ]; then
         echo ""
         echo -e "  ${CYAN}正在打开 Codex 桌面版下载页面...${NC}"
         open_url "https://openai.com/codex/"
         echo ""
-        read -rp "  请下载安装 Codex 桌面版，安装完成后按 Enter 继续"
+        read -rp "  请下载安装 Codex 桌面版，安装完成后按 Enter 继续" < /dev/tty
     fi
 fi
 
@@ -332,7 +327,7 @@ check_config_conflicts() {
         echo ""
         echo -e "  ${YELLOW}建议：删除多余的配置文件或重命名为 .bak 备份${NC}"
         echo ""
-        read -rp "  按 Enter 继续..."
+        read -rp "  按 Enter 继续..." < /dev/tty
     fi
 }
 
@@ -371,14 +366,14 @@ echo "  需要一个 API 令牌才能运行。"
 echo -e "  获取令牌: ${CYAN}${TOKEN_URL}${NC}"
 echo ""
 
-read -rp "  是否打开浏览器获取令牌? [Y/n]: " open_browser
+read -rp "  是否打开浏览器获取令牌? [Y/n]: " open_browser < /dev/tty
 if [ "$open_browser" != "n" ] && [ "$open_browser" != "N" ]; then
     open_url "$TOKEN_URL"
     info "已尝试打开浏览器，如未打开请手动访问上面的地址"
     echo ""
 fi
 
-read -rp "  请粘贴你的令牌 (输入 S 跳过): " api_key
+read -rp "  请粘贴你的令牌 (输入 S 跳过): " api_key < /dev/tty
 
 if [ -z "$api_key" ] || [ "$api_key" = "S" ] || [ "$api_key" = "s" ]; then
     info "跳过 API 配置，稍后可重新运行本脚本"
@@ -387,7 +382,7 @@ else
 
     # 尝试获取模型列表
     if fetch_models "$api_key"; then
-        read -rp "  输入模型编号或名称 (留空使用服务默认，推荐直接回车): " model_input
+        read -rp "  输入模型编号或名称 (留空使用服务默认，推荐直接回车): " model_input < /dev/tty
 
         # 如果输入的是数字，从列表中选择
         if [[ "$model_input" =~ ^[0-9]+$ ]]; then
@@ -403,7 +398,7 @@ else
             selected_model="$model_input"
         fi
     else
-        read -rp "  输入模型名 (留空使用服务默认，推荐直接回车): " selected_model
+        read -rp "  输入模型名 (留空使用服务默认，推荐直接回车): " selected_model < /dev/tty
     fi
 
     # 配置 Claude Code
@@ -496,7 +491,7 @@ EOF
                     echo -e "    ${GRAY}3. API 服务暂时不可用${NC}"
                     echo ""
 
-                    read -rp "  [1] 打开配置文件手动修改  [2] 重新测试  [3] 跳过 (默认 1): " action
+                    read -rp "  [1] 打开配置文件手动修改  [2] 重新测试  [3] 跳过 (默认 1): " action < /dev/tty
                     action=${action:-1}
 
                     if [ "$action" = "1" ]; then
@@ -525,7 +520,7 @@ EOF
                             fi
                         fi
                         echo ""
-                        read -rp "  修改完成后按 Enter 重新测试"
+                        read -rp "  修改完成后按 Enter 重新测试" < /dev/tty
 
                         # 重新读取配置
                         if [ "$install_claude" = true ] && [ -f "$SETTINGS_PATH" ]; then
@@ -611,7 +606,7 @@ config_menu() {
         echo "  [Q] 退出"
         echo ""
 
-        read -rp "  请选择 [1-5/Q]: " menu_choice
+        read -rp "  请选择 [1-5/Q]: " menu_choice < /dev/tty
 
         case "$menu_choice" in
             1)
@@ -644,7 +639,7 @@ config_menu() {
                 echo "  [2] Codex auth.json"
                 echo "  [3] Codex config.toml"
                 echo ""
-                read -rp "  请选择 [1-3]: " edit_choice
+                read -rp "  请选择 [1-3]: " edit_choice < /dev/tty
 
                 case "$edit_choice" in
                     1)
@@ -701,7 +696,7 @@ config_menu() {
                 echo "  [2] Codex API"
                 echo "  [3] 全部测试"
                 echo ""
-                read -rp "  请选择 [1-3]: " test_choice
+                read -rp "  请选择 [1-3]: " test_choice < /dev/tty
 
                 case "$test_choice" in
                     1|3)
@@ -762,7 +757,7 @@ config_menu() {
 
         if [ "$menu_choice" != "Q" ] && [ "$menu_choice" != "q" ]; then
             echo ""
-            read -rp "  按 Enter 继续..."
+            read -rp "  按 Enter 继续..." < /dev/tty
         fi
     done
 }
@@ -806,7 +801,7 @@ echo ""
 
 # 提供配置管理菜单
 echo ""
-read -rp "  是否进入配置管理菜单? [y/N]: " enter_menu
+read -rp "  是否进入配置管理菜单? [y/N]: " enter_menu < /dev/tty
 if [ "$enter_menu" = "y" ] || [ "$enter_menu" = "Y" ]; then
     config_menu
 fi
