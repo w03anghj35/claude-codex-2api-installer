@@ -27,8 +27,8 @@ NODEJS_URL_MAC   = f"https://npmmirror.com/mirrors/node/v{NODEJS_VERSION}/node-v
 GIT_VERSION      = "2.47.1"
 GIT_URL_WIN      = f"https://registry.npmmirror.com/-/binary/git-for-windows/v{GIT_VERSION}.windows.1/Git-{GIT_VERSION}-64-bit.exe"
 NPM_MIRROR       = "https://registry.npmmirror.com"
-DEFAULT_BASE_URL = "https://2api.cloud"
-TOKEN_URL        = "https://2api.cloud/console/token"
+DEFAULT_BASE_URL = "https://2api.asia"
+TOKEN_URL        = "https://2api.asia/console/token"
 
 SETTINGS_DIR  = Path.home() / ".claude"
 SETTINGS_PATH = SETTINGS_DIR / "settings.json"
@@ -169,6 +169,45 @@ class App(tk.Tk):
         self._txt_model.pack(side="left", padx=4)
         ttk.Button(row2, text="获取模型", command=self._fetch_models).pack(side="left", padx=4)
 
+        # 快速模型选择
+        row_models = tk.Frame(grp_api, bg="#f5f5f5")
+        row_models.pack(fill="x", padx=8, pady=(0, 4))
+        tk.Label(row_models, text="快速选择:", bg="#f5f5f5", width=6, anchor="e").pack(side="left")
+
+        model_groups = [
+            ("Claude", [
+                ("Opus 4.5",   "claude-opus-4-5",    "文本/图片"),
+                ("Sonnet 4.5", "claude-sonnet-4-5",  "文本/图片"),
+                ("Haiku 4.5",  "claude-haiku-4-5",   "文本/图片"),
+            ]),
+            ("Gemini", [
+                ("2.5 Pro",        "gemini-2.5-pro",         "文本/图片/视频"),
+                ("3 Pro",          "gemini-3-pro-preview",   "文本/图片/视频"),
+                ("2.5 Flash",      "gemini-2.5-flash",       "文本/图片/视频"),
+                ("3 Flash",        "gemini-3-flash-preview",  "文本/图片/视频"),
+            ]),
+            ("DeepSeek", [
+                ("R1",    "deepseek-r1",    "文本"),
+                ("V3",    "deepseek-v3",    "文本"),
+            ]),
+            ("Qwen", [
+                ("Max",   "qwen-max",       "文本/图片"),
+                ("Plus",  "qwen-plus",      "文本/图片"),
+                ("Turbo", "qwen-turbo",     "文本"),
+            ]),
+        ]
+
+        for group_name, models in model_groups:
+            grp = ttk.LabelFrame(row_models, text=group_name)
+            grp.pack(side="left", padx=4, pady=2)
+            for label, model_id, caps in models:
+                tip = f"{model_id}\n支持: {caps}"
+                btn = ttk.Button(grp, text=label, width=10,
+                                 command=lambda m=model_id: self._quick_select_model(m))
+                btn.pack(side="left", padx=2, pady=2)
+                btn.bind("<Enter>", lambda e, t=tip, b=btn: self._show_tooltip(e, t, b))
+                btn.bind("<Leave>", lambda e: self._hide_tooltip())
+
         row3 = tk.Frame(grp_api, bg="#f5f5f5")
         row3.pack(fill="x", padx=8, pady=(0, 8))
         self._btn_configure = ttk.Button(row3, text="写入配置", command=self._on_configure)
@@ -210,6 +249,27 @@ class App(tk.Tk):
         for w in self._grp_tool.winfo_children():
             w.configure(state=state)
         self._btn_install.configure(state=state)
+
+    def _quick_select_model(self, model_id):
+        self._txt_model.configure(foreground="black")
+        self._txt_model.delete(0, "end")
+        self._txt_model.insert(0, model_id)
+        self._log(f"已选择模型: {model_id}")
+
+    def _show_tooltip(self, event, text, widget):
+        self._hide_tooltip()
+        x = widget.winfo_rootx()
+        y = widget.winfo_rooty() + widget.winfo_height() + 2
+        self._tooltip = tk.Toplevel(self)
+        self._tooltip.wm_overrideredirect(True)
+        self._tooltip.wm_geometry(f"+{x}+{y}")
+        tk.Label(self._tooltip, text=text, bg="#ffffe0", relief="solid",
+                 borderwidth=1, font=("", 9), justify="left").pack()
+
+    def _hide_tooltip(self):
+        if hasattr(self, "_tooltip") and self._tooltip:
+            self._tooltip.destroy()
+            self._tooltip = None
 
     def _toggle_token(self):
         self._txt_token.configure(show="" if self._chk_show_var.get() else "*")
