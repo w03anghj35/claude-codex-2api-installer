@@ -30,6 +30,13 @@ NPM_MIRROR       = "https://registry.npmmirror.com"
 DEFAULT_BASE_URL = "https://2api.asia"
 TOKEN_URL        = "https://2api.asia/console/token"
 
+# API 站点选项
+API_SITES = [
+    ("2api.asia", "https://2api.asia"),
+    ("2api.cloud", "https://2api.cloud"),
+    ("43.161.229.205:3001", "http://43.161.229.205:3001"),
+]
+
 SETTINGS_DIR  = Path.home() / ".claude"
 SETTINGS_PATH = SETTINGS_DIR / "settings.json"
 CODEX_HOME    = Path.home() / ".codex"
@@ -60,13 +67,15 @@ def run_cmd(cmd, shell=True):
     except Exception as e:
         return False, str(e)
 
-def save_claude_config(api_key, model):
+def save_claude_config(api_key, model, base_url=None):
     SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
+    if base_url is None:
+        base_url = DEFAULT_BASE_URL
     if model:
         obj = {
             "env": {
                 "ANTHROPIC_AUTH_TOKEN":           api_key,
-                "ANTHROPIC_BASE_URL":             DEFAULT_BASE_URL,
+                "ANTHROPIC_BASE_URL":             base_url,
                 "ANTHROPIC_DEFAULT_OPUS_MODEL":   model,
                 "ANTHROPIC_DEFAULT_SONNET_MODEL": model,
                 "ANTHROPIC_DEFAULT_HAIKU_MODEL":  model,
@@ -77,21 +86,26 @@ def save_claude_config(api_key, model):
         obj = {
             "env": {
                 "ANTHROPIC_AUTH_TOKEN": api_key,
-                "ANTHROPIC_BASE_URL":   DEFAULT_BASE_URL,
+                "ANTHROPIC_BASE_URL":   base_url,
             }
         }
     with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
         json.dump(obj, f, indent=2, ensure_ascii=False)
 
-def save_codex_config(api_key, model):
+def save_codex_config(api_key, model, base_url=None):
     CODEX_HOME.mkdir(parents=True, exist_ok=True)
+    if base_url is None:
+        base_url = DEFAULT_BASE_URL
+    # Codex 自动在 base_url 后面加 /v1
+    if not base_url.endswith("/v1"):
+        base_url = f"{base_url}/v1"
     auth = {"OPENAI_API_KEY": api_key}
     with open(CODEX_HOME / "auth.json", "w", encoding="utf-8") as f:
         json.dump(auth, f, indent=2)
     cfg = f'model_provider = "88code"\n'
     if model:
         cfg += f'model = "{model}"\n'
-    cfg += f'\n[model_providers.88code]\nname = "88code"\nbase_url = "{DEFAULT_BASE_URL}/v1"\nwire_api = "responses"\nrequires_openai_auth = true\n'
+    cfg += f'\n[model_providers.88code]\nname = "88code"\nbase_url = "{base_url}"\nwire_api = "responses"\nrequires_openai_auth = true\n'
     with open(CODEX_HOME / "config.toml", "w", encoding="utf-8") as f:
         f.write(cfg)
 
@@ -126,6 +140,9 @@ class App(tk.Tk):
         ttk.Radiobutton(grp_mode, text="仅配置 / 更换 API 令牌",
                         variable=self._mode, value="api_only",
                         command=self._on_mode_change).pack(side="left", padx=12, pady=6)
+        ttk.Radiobutton(grp_mode, text="图片/视频生成",
+                        variable=self._mode, value="media_gen",
+                        command=self._on_mode_change).pack(side="left", padx=12, pady=6)
 
         # 工具选择
         self._grp_tool = ttk.LabelFrame(self, text="步骤 1 — 选择要安装的工具")
@@ -146,10 +163,18 @@ class App(tk.Tk):
         self._lbl_install_hint.pack(side="left", padx=4)
 
         # API 配置
-        grp_api = ttk.LabelFrame(self, text="步骤 3 — 配置 API 令牌")
-        grp_api.pack(fill="x", padx=12, pady=4)
+        self._grp_api = ttk.LabelFrame(self, text="步骤 3 — 配置 API 令牌")
+        self._grp_api.pack(fill="x", padx=12, pady=4)
 
-        row1 = tk.Frame(grp_api, bg="#f5f5f5")
+        row0 = tk.Frame(self._grp_api, bg="#f5f5f5")
+        row0.pack(fill="x", padx=8, pady=4)
+        tk.Label(row0, text="站点:", bg="#f5f5f5", width=6, anchor="e").pack(side="left")
+        self._site_var = tk.StringVar(value=API_SITES[0][0])
+        site_combo = ttk.Combobox(row0, textvariable=self._site_var, width=46, state="readonly")
+        site_combo['values'] = [name for name, url in API_SITES]
+        site_combo.pack(side="left", padx=4)
+
+        row1 = tk.Frame(self._grp_api, bg="#f5f5f5")
         row1.pack(fill="x", padx=8, pady=4)
         tk.Label(row1, text="令牌:", bg="#f5f5f5", width=6, anchor="e").pack(side="left")
         self._txt_token = ttk.Entry(row1, show="*", width=48)
@@ -159,7 +184,7 @@ class App(tk.Tk):
                         command=self._toggle_token).pack(side="left")
         ttk.Button(row1, text="获取令牌", command=lambda: self._open_url(TOKEN_URL)).pack(side="left", padx=8)
 
-        row2 = tk.Frame(grp_api, bg="#f5f5f5")
+        row2 = tk.Frame(self._grp_api, bg="#f5f5f5")
         row2.pack(fill="x", padx=8, pady=4)
         tk.Label(row2, text="模型:", bg="#f5f5f5", width=6, anchor="e").pack(side="left")
         self._txt_model = ttk.Entry(row2, width=48, foreground="gray")
@@ -169,46 +194,7 @@ class App(tk.Tk):
         self._txt_model.pack(side="left", padx=4)
         ttk.Button(row2, text="获取模型", command=self._fetch_models).pack(side="left", padx=4)
 
-        # 快速模型选择
-        row_models = tk.Frame(grp_api, bg="#f5f5f5")
-        row_models.pack(fill="x", padx=8, pady=(0, 4))
-        tk.Label(row_models, text="快速选择:", bg="#f5f5f5", width=6, anchor="e").pack(side="left")
-
-        model_groups = [
-            ("Claude", [
-                ("Opus 4.5",   "claude-opus-4-5",    "文本/图片"),
-                ("Sonnet 4.5", "claude-sonnet-4-5",  "文本/图片"),
-                ("Haiku 4.5",  "claude-haiku-4-5",   "文本/图片"),
-            ]),
-            ("Gemini", [
-                ("2.5 Pro",        "gemini-2.5-pro",         "文本/图片/视频"),
-                ("3 Pro",          "gemini-3-pro-preview",   "文本/图片/视频"),
-                ("2.5 Flash",      "gemini-2.5-flash",       "文本/图片/视频"),
-                ("3 Flash",        "gemini-3-flash-preview",  "文本/图片/视频"),
-            ]),
-            ("DeepSeek", [
-                ("R1",    "deepseek-r1",    "文本"),
-                ("V3",    "deepseek-v3",    "文本"),
-            ]),
-            ("Qwen", [
-                ("Max",   "qwen-max",       "文本/图片"),
-                ("Plus",  "qwen-plus",      "文本/图片"),
-                ("Turbo", "qwen-turbo",     "文本"),
-            ]),
-        ]
-
-        for group_name, models in model_groups:
-            grp = ttk.LabelFrame(row_models, text=group_name)
-            grp.pack(side="left", padx=4, pady=2)
-            for label, model_id, caps in models:
-                tip = f"{model_id}\n支持: {caps}"
-                btn = ttk.Button(grp, text=label, width=10,
-                                 command=lambda m=model_id: self._quick_select_model(m))
-                btn.pack(side="left", padx=2, pady=2)
-                btn.bind("<Enter>", lambda e, t=tip, b=btn: self._show_tooltip(e, t, b))
-                btn.bind("<Leave>", lambda e: self._hide_tooltip())
-
-        row3 = tk.Frame(grp_api, bg="#f5f5f5")
+        row3 = tk.Frame(self._grp_api, bg="#f5f5f5")
         row3.pack(fill="x", padx=8, pady=(0, 8))
         self._btn_configure = ttk.Button(row3, text="写入配置", command=self._on_configure)
         self._btn_configure.pack(side="left", padx=0)
@@ -217,11 +203,52 @@ class App(tk.Tk):
         ttk.Button(row3, text="查看配置", command=self._on_view_config).pack(side="left", padx=8)
         ttk.Button(row3, text="检查冲突", command=self._check_duplicate_configs).pack(side="left", padx=8)
 
-        # 日志
-        grp_log = ttk.LabelFrame(self, text="日志")
-        grp_log.pack(fill="both", expand=True, padx=12, pady=4)
+        # 图片/视频生成区域
+        self._grp_media = ttk.LabelFrame(self, text="图片/视频生成")
+        # 默认不显示，通过 _on_mode_change 控制
 
-        log_toolbar = tk.Frame(grp_log, bg="#f5f5f5")
+        media_row0 = tk.Frame(self._grp_media, bg="#f5f5f5")
+        media_row0.pack(fill="x", padx=8, pady=4)
+        tk.Label(media_row0, text="站点:", bg="#f5f5f5", width=6, anchor="e").pack(side="left")
+        self._media_site_var = tk.StringVar(value=API_SITES[0][0])
+        media_site_combo = ttk.Combobox(media_row0, textvariable=self._media_site_var, width=46, state="readonly")
+        media_site_combo['values'] = [name for name, url in API_SITES]
+        media_site_combo.pack(side="left", padx=4)
+
+        media_row1 = tk.Frame(self._grp_media, bg="#f5f5f5")
+        media_row1.pack(fill="x", padx=8, pady=4)
+        tk.Label(media_row1, text="令牌:", bg="#f5f5f5", width=6, anchor="e").pack(side="left")
+        self._media_token = ttk.Entry(media_row1, show="*", width=48)
+        self._media_token.pack(side="left", padx=4)
+
+        media_row2 = tk.Frame(self._grp_media, bg="#f5f5f5")
+        media_row2.pack(fill="x", padx=8, pady=4)
+        tk.Label(media_row2, text="模型:", bg="#f5f5f5", width=6, anchor="e").pack(side="left")
+        self._media_model_var = tk.StringVar()
+        self._media_model_combo = ttk.Combobox(media_row2, textvariable=self._media_model_var, width=46)
+        self._media_model_combo['values'] = ["gpt-image-2", "gemini-3.1-flash-image"]
+        self._media_model_combo.pack(side="left", padx=4)
+        ttk.Button(media_row2, text="获取模型", command=self._fetch_media_models).pack(side="left", padx=4)
+
+        media_row3 = tk.Frame(self._grp_media, bg="#f5f5f5")
+        media_row3.pack(fill="x", padx=8, pady=4)
+        tk.Label(media_row3, text="描述:", bg="#f5f5f5", width=6, anchor="e").pack(side="left")
+        self._txt_prompt = ttk.Entry(media_row3, width=48)
+        self._txt_prompt.pack(side="left", padx=4)
+
+        media_row4 = tk.Frame(self._grp_media, bg="#f5f5f5")
+        media_row4.pack(fill="x", padx=8, pady=4)
+        self._chk_translate_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(media_row4, text="自动翻译为英文", variable=self._chk_translate_var).pack(side="left", padx=(118, 12))
+        ttk.Button(media_row4, text="生成", command=self._on_generate_media).pack(side="left", padx=4)
+        tk.Label(media_row4, text="💡 提示：gemini 模型较慢（1-2分钟），推荐使用 gpt-image-2",
+                 fg="#555", bg="#f5f5f5", font=("", 8)).pack(side="left", padx=4)
+
+        # 日志
+        self._grp_log = ttk.LabelFrame(self, text="日志")
+        self._grp_log.pack(fill="both", expand=True, padx=12, pady=4)
+
+        log_toolbar = tk.Frame(self._grp_log, bg="#f5f5f5")
         log_toolbar.pack(fill="x", padx=4, pady=(4, 0))
         ttk.Button(log_toolbar, text="编辑 Claude 配置", command=lambda: self._edit_config("claude")).pack(side="left", padx=2)
         ttk.Button(log_toolbar, text="编辑 Codex config", command=lambda: self._edit_config("codex_config")).pack(side="left", padx=2)
@@ -234,42 +261,36 @@ class App(tk.Tk):
         ttk.Button(log_toolbar, text="清空日志", command=self._clear_log).pack(side="left", padx=2)
 
         # 编辑提示标签
-        self._lbl_editing = tk.Label(grp_log, text="", fg="blue", bg="#f5f5f5", anchor="w")
+        self._lbl_editing = tk.Label(self._grp_log, text="", fg="blue", bg="#f5f5f5", anchor="w")
         self._lbl_editing.pack(fill="x", padx=4, pady=(2, 0))
 
-        self._txt_log = scrolledtext.ScrolledText(grp_log, height=10,
+        self._txt_log = scrolledtext.ScrolledText(self._grp_log, height=10,
                                                    font=("Courier", 9), bg="#1e1e1e", fg="#d4d4d4")
         self._txt_log.pack(fill="both", expand=True, padx=4, pady=4)
         self._editing_config = None  # 当前正在编辑的配置文件路径
         self._editing_config_type = None  # 当前正在编辑的配置类型
 
     def _on_mode_change(self):
-        api_only = self._mode.get() == "api_only"
-        state = "disabled" if api_only else "normal"
-        for w in self._grp_tool.winfo_children():
-            w.configure(state=state)
-        self._btn_install.configure(state=state)
+        mode = self._mode.get()
 
-    def _quick_select_model(self, model_id):
-        self._txt_model.configure(foreground="black")
-        self._txt_model.delete(0, "end")
-        self._txt_model.insert(0, model_id)
-        self._log(f"已选择模型: {model_id}")
+        if mode == "media_gen":
+            # 图片/视频生成模式：隐藏安装相关，显示图片生成区域（在日志之前）
+            self._grp_tool.pack_forget()
+            self._grp_install.pack_forget()
+            self._grp_api.pack_forget()
+            self._grp_media.pack(fill="x", padx=12, pady=4, before=self._grp_log)
+        else:
+            # 完整安装或仅配置模式（所有控件都在日志之前）
+            self._grp_media.pack_forget()
+            self._grp_tool.pack(fill="x", padx=12, pady=4, before=self._grp_log)
+            self._grp_install.pack(fill="x", padx=12, pady=4, before=self._grp_log)
+            self._grp_api.pack(fill="x", padx=12, pady=4, before=self._grp_log)
 
-    def _show_tooltip(self, event, text, widget):
-        self._hide_tooltip()
-        x = widget.winfo_rootx()
-        y = widget.winfo_rooty() + widget.winfo_height() + 2
-        self._tooltip = tk.Toplevel(self)
-        self._tooltip.wm_overrideredirect(True)
-        self._tooltip.wm_geometry(f"+{x}+{y}")
-        tk.Label(self._tooltip, text=text, bg="#ffffe0", relief="solid",
-                 borderwidth=1, font=("", 9), justify="left").pack()
-
-    def _hide_tooltip(self):
-        if hasattr(self, "_tooltip") and self._tooltip:
-            self._tooltip.destroy()
-            self._tooltip = None
+            api_only = mode == "api_only"
+            state = "disabled" if api_only else "normal"
+            for w in self._grp_tool.winfo_children():
+                w.configure(state=state)
+            self._btn_install.configure(state=state)
 
     def _toggle_token(self):
         self._txt_token.configure(show="" if self._chk_show_var.get() else "*")
@@ -291,14 +312,15 @@ class App(tk.Tk):
             messagebox.showwarning("提示", "请先输入 API 令牌")
             return
 
+        base_url = self._get_selected_base_url()
         self._log("正在获取模型列表...")
-        threading.Thread(target=self._do_fetch_models, args=(token,), daemon=True).start()
+        threading.Thread(target=self._do_fetch_models, args=(token, base_url), daemon=True).start()
 
-    def _do_fetch_models(self, token):
+    def _do_fetch_models(self, token, base_url):
         """后台获取模型列表"""
         try:
             req = urllib.request.Request(
-                f"{DEFAULT_BASE_URL}/v1/models",
+                f"{base_url}/v1/models",
                 headers={"Authorization": f"Bearer {token}"}
             )
             with urllib.request.urlopen(req, timeout=10) as resp:
@@ -709,6 +731,171 @@ class App(tk.Tk):
         self.after(0, lambda: self._btn_install.configure(state="normal"))
 
     # -----------------------------------------------------------------------
+    # 辅助方法
+    # -----------------------------------------------------------------------
+    def _get_selected_base_url(self):
+        """获取当前选择的站点 URL"""
+        site_name = self._site_var.get()
+        for name, url in API_SITES:
+            if name == site_name:
+                return url
+        return DEFAULT_BASE_URL
+
+    # -----------------------------------------------------------------------
+    # 图片/视频生成
+    # -----------------------------------------------------------------------
+    def _fetch_media_models(self):
+        """获取图片/视频模型列表"""
+        token = self._media_token.get().strip()
+        if not token:
+            messagebox.showwarning("缺少令牌", "请先输入 API 令牌")
+            return
+
+        site_name = self._media_site_var.get()
+        base_url = None
+        for name, url in API_SITES:
+            if name == site_name:
+                base_url = url
+                break
+        if not base_url:
+            base_url = DEFAULT_BASE_URL
+
+        self._log("正在获取图片/视频模型列表...")
+        threading.Thread(target=self._do_fetch_media_models,
+                        args=(token, base_url), daemon=True).start()
+
+    def _do_fetch_media_models(self, token, base_url):
+        """后台获取图片/视频模型"""
+        try:
+            req = urllib.request.Request(
+                f"{base_url}/v1/models",
+                headers={"Authorization": f"Bearer {token}"}
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode())
+                models = [m["id"] for m in data.get("data", [])]
+
+                # 筛选图片/视频模型
+                media_keywords = ["image", "video", "imagine", "flux", "dall-e",
+                                 "midjourney", "stable-diffusion", "kling",
+                                 "minimax", "hailuo"]
+                media_models = [m for m in models
+                               if any(kw in m.lower() for kw in media_keywords)]
+
+                if media_models:
+                    self.after(0, lambda: self._media_model_combo.configure(values=media_models))
+                    self._log(f"[成功] 获取到 {len(media_models)} 个图片/视频模型")
+                else:
+                    self._log("[警告] 未找到图片/视频模型")
+        except Exception as e:
+            self._log(f"[失败] 获取模型失败: {e}")
+
+    def _on_generate_media(self):
+        """生成图片或视频"""
+        token = self._media_token.get().strip()
+        model = self._media_model_var.get().strip()
+        prompt = self._txt_prompt.get().strip()
+
+        if not token or not model or not prompt:
+            messagebox.showwarning("缺少信息", "请填写令牌、模型和描述")
+            return
+
+        site_name = self._media_site_var.get()
+        base_url = None
+        for name, url in API_SITES:
+            if name == site_name:
+                base_url = url
+                break
+        if not base_url:
+            base_url = DEFAULT_BASE_URL
+
+        self._log(f"正在生成{'视频' if 'video' in model.lower() else '图片'}: {prompt}")
+        self._log(f"  站点: {site_name}")
+        self._log(f"  模型: {model}")
+
+        threading.Thread(target=self._do_generate_media,
+                        args=(token, model, prompt, base_url), daemon=True).start()
+
+    def _do_generate_media(self, token, model, prompt, base_url):
+        """后台生成图片/视频"""
+        try:
+            # 自动翻译中文到英文
+            if self._chk_translate_var.get() and self._contains_chinese(prompt):
+                self._log("  检测到中文，正在翻译为英文...")
+                prompt = self._translate_to_english(prompt, token, base_url)
+                self._log(f"  翻译结果: {prompt}")
+
+            # 调用 API
+            payload = {
+                "model": model,
+                "prompt": prompt,
+                "n": 1,
+            }
+            req = urllib.request.Request(
+                f"{base_url}/v1/images/generations",
+                data=json.dumps(payload).encode(),
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json"
+                }
+            )
+
+            with urllib.request.urlopen(req, timeout=180) as resp:
+                data = json.loads(resp.read().decode())
+
+                output_dir = Path.home() / "Desktop" / "ai_outputs"
+                output_dir.mkdir(parents=True, exist_ok=True)
+
+                for item in data.get("data", []):
+                    url = item.get("url")
+                    if url:
+                        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        ext = ".mp4" if "video" in model.lower() else ".png"
+                        filename = f"{model}_{ts}{ext}"
+                        filepath = output_dir / filename
+
+                        self._log(f"  正在下载...")
+                        file_data = urllib.request.urlopen(url, timeout=120).read()
+                        with open(filepath, "wb") as f:
+                            f.write(file_data)
+                        self._log(f"[成功] 已保存: {filepath}")
+                        return
+
+                self._log("[失败] 未获取到结果")
+        except Exception as e:
+            self._log(f"[失败] 生成失败: {e}")
+
+    def _contains_chinese(self, text):
+        """检查文本是否包含中文"""
+        return any('一' <= char <= '鿿' for char in text)
+
+    def _translate_to_english(self, text, token, base_url):
+        """使用 Claude API 翻译中文到英文"""
+        try:
+            payload = {
+                "model": "claude-sonnet-4-6",
+                "max_tokens": 200,
+                "messages": [{
+                    "role": "user",
+                    "content": f"Translate this Chinese text to English for image generation. Only output the English translation, no explanation:\n\n{text}"
+                }]
+            }
+            req = urllib.request.Request(
+                f"{base_url}/v1/messages",
+                data=json.dumps(payload).encode(),
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                    "anthropic-version": "2023-06-01"
+                }
+            )
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read().decode())
+                return data["content"][0]["text"].strip()
+        except:
+            return text  # 翻译失败则使用原文
+
+    # -----------------------------------------------------------------------
     # 写入配置
     # -----------------------------------------------------------------------
     def _on_configure(self):
@@ -728,13 +915,16 @@ class App(tk.Tk):
         install_claude = True if api_only else tool in ("claude", "both")
         install_codex  = False if api_only else tool in ("codex",  "both")
 
+        base_url = self._get_selected_base_url()
+
         try:
             if install_claude:
-                save_claude_config(api_key, model)
+                save_claude_config(api_key, model, base_url)
                 self._log(f"Claude Code 配置已写入: {SETTINGS_PATH}")
             if install_codex:
-                save_codex_config(api_key, model)
+                save_codex_config(api_key, model, base_url)
                 self._log(f"Codex 配置已写入: {CODEX_HOME}")
+            self._log(f"站点: {base_url}")
             self._log(f"模型: {'使用服务默认' if not model else model}")
             messagebox.showinfo("完成", "配置写入成功！")
         except Exception as e:
